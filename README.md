@@ -46,4 +46,4 @@ calendar-v0.1.0
 notes-v0.1.0
 ```
 
-See [release conventions](docs/releases.md), the [Pocket architecture](docs/architecture.md), the shared [Cloud architecture](docs/cloud/architecture.md), and the [Clock domain architecture](docs/cloud/clock.md).
+See [release conventions](docs/releases.md), the [Pocket architecture](docs/architecture.md), the shared [Cloud architecture](docs/cloud/architecture.md), and the [Clock domain architecture](docs/cloud/clock.md). The recommended backend stack is documented in the [backend technology research](docs/research/backend-tech-stack.md).
