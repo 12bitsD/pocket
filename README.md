@@ -10,7 +10,7 @@ Pocket targets general Android. ColorOS receives deep optimizations for backgrou
 - **Agent Core**: tested Prompt + local-time schedule → five-field Cron contract.
 - **Calendar / Notes**: scoped and registered in the monorepo; implementation has not started.
 
-This repository does not yet produce an Android APK or connect to a live cloud Agent. Clock's cloud-brokered and device-direct access paths are documented as an [open architecture proposal](docs/clock-connectivity.md); neither is presented as implemented. The [synchronization proposal](docs/clock-sync.md) defines long-link push, local outbox, and reconnect catch-up for local, Agent, and Calendar writes.
+The aligned design is organized into the [Pocket architecture](docs/architecture.md), the shared [Cloud architecture](docs/cloud/architecture.md), and the [Clock domain architecture](docs/cloud/clock.md). Current implementation remains the interactive Clock prototype; Android and live Cloud integration have not started.
 
 ## Layout
 
@@ -46,4 +46,4 @@ calendar-v0.1.0
 notes-v0.1.0
 ```
 
-See [docs/releases.md](docs/releases.md) and [docs/architecture.md](docs/architecture.md). The [Backend Architecture v1](docs/backend-architecture-v1.md) is a scenario-driven proposal currently under review; it is not an implementation commitment.
+See [release conventions](docs/releases.md), the [Pocket architecture](docs/architecture.md), the shared [Cloud architecture](docs/cloud/architecture.md), and the [Clock domain architecture](docs/cloud/clock.md).

@@ -1,95 +1,98 @@
-# Pocket architecture
+# Pocket 总体架构
 
-## Three applications, not one
+状态：**已对齐，2026-11-23。**
 
-Decision confirmed on 2026-11-18: **Clock, Calendar, and Notes are three separate apps.** The monorepo is only a source and release-management structure; it is not a shared app shell.
+Pocket 由三个独立 Android App、一个共享 Cloud，以及外部 Agent 的接入契约组成。本文只描述系统级职责和关系；Cloud 内部设计见 [Cloud 架构](cloud/architecture.md)，各领域设计见对应领域文档。
 
-Each app has its own UI, Android package, local behavior, version, and release artifact. None embeds the other two or becomes a master client for their capabilities.
-
-```text
-Clock App ─────┐
-Calendar App ──┼── shared cloud backend, identity, table-level authorization
-Notes App ─────┘
-```
-
-The backend and authorization model are shared. Domain data and responsibility remain separate: Clock owns alarms, Calendar owns events, and Notes owns note content. Table-level grants do not turn all three into one data owner.
-
-## Product seams
-
-The three apps share contracts, not screens or business logic. Each app can be built, versioned, and released without forcing a release of the other two.
-
-- **Clock**: local alarms, world clock, stopwatch, timer, and Agent Cron Job authoring.
-- **Calendar**: events and reminders. Calendar or Agent creation may attach a clock reminder; the clock cannot attach itself to an existing event.
-- **Notes**: Markdown notes and scoped Agent read/write access.
-- **Agent Core**: the small shared interface for validating Prompt jobs and generating Cron expressions.
-- **Design System**: semantic monochrome tokens and shared component styles.
-
-## Android platform scope
-
-Pocket is a **general Android project**, not a ColorOS-only project. Shared behavior uses standard Android capabilities and must not depend on OPPO-specific packages.
-
-ColorOS is a deep-optimization target, not a platform boundary. Manufacturer-specific handling is isolated behind device adapters and permission guidance, including background launch, battery whitelist, autostart, and background pop-up settings. Other Android devices use the same apps and contracts without the ColorOS path.
-
-## Two execution paths
-
-### Personal reminder
+## 1. 系统结构
 
 ```text
-Clock App → Android exact alarm or notification → user
-Calendar App → reminder contract → Clock App → Android exact alarm or notification
+                    ┌──────────────────────────┐
+                    │       External Agent     │
+                    │  Prompt / Run / Session  │
+                    └────────────▲─────────────┘
+                                 │ HTTP Prompt Delivery
+                                 │
+┌────────────────────────────────┴────────────────────────────────┐
+│                         Pocket Cloud                            │
+│  Identity / Permission / Link / Sync / Scheduler / Delivery     │
+└───────────────▲────────────────▲────────────────▲───────────────┘
+                │                │                │
+       ┌────────┴────────┐  ┌────┴──────────┐  ┌──┴─────────┐
+       │    Clock App    │  │ Calendar App  │  │ Notes App  │
+       │ Android + Clock │  │ Android+Event │  │ Android+MD │
+       └─────────────────┘  └───────────────┘  └────────────┘
 ```
 
-Each device app owns its own behavior and permissions. Calendar does not become part of Clock; it uses the reminder contract when cross-app behavior is needed.
+三个 App 各自拥有 UI、Android 包名、本地数据、原生能力、版本和 release。Cloud 提供共享后端能力，不把三个 App 合并为一个客户端。
 
-### Agent access and Cron Jobs
+Agent 独立负责接收 Prompt、创建 Run、管理 Session 和展示结果。Pocket 通过绑定的 Agent EP 投递内容，不介入 Agent 的运行过程。
+
+## 2. 职责划分
+
+| 对象 | 核心职责 |
+| --- | --- |
+| Pocket Cloud | User ID、权限、Link、数据同步、定时触发、操作记录、Agent 投递 |
+| Clock App | 闹钟、世界时钟、秒表、计时器、本地执行、Lock、离线 outbox |
+| Calendar App | Event、提醒策略、与 Clock 的提醒关联 |
+| Notes App | 笔记内容、版本、同步范围和访问授权 |
+| External Agent | 接收 Prompt、创建 Run、管理 Session、处理并可选回写结果 |
+
+各领域的表和业务规则由对应模块拥有。共享权限和操作协议不改变数据所有权。
+
+## 3. 两条主流程
+
+### 普通设备动作
 
 ```text
-Agent → cloud broker or optional direct adapter → the authorized app
-                                                → Clock App for alarms
-                                                → Calendar App for events
-                                                → Notes App for notes
+本地／Agent／Calendar 入口
+→ Pocket Cloud 同步操作
+→ 对应 Android App 应用并执行
+→ Cloud 记录真实执行结果
 ```
 
-The cloud is a connection and coordination layer, not automatically the Agent or executor. Cloud-brokered and device-direct access are two transports for the same capabilities. The current recommendation is cloud first with direct access as a later option, but this is still under review.
+Cloud 受理与 Android 执行分开。普通闹钟只有 Clock App 返回 `EXECUTED` 才算设备设置成功。
 
-Cron scheduler ownership is a separate, currently open decision. A cloud scheduler can start a Prompt while the phone is offline, but live device data still needs the client; a device scheduler has different Android reliability constraints. See [clock-connectivity.md](clock-connectivity.md) for the candidate flows, state contract, and open decisions.
-
-### Synchronization
-
-Local, Agent, and Calendar writes use one alarm-operation pipeline. The preferred transport is an authenticated outbound WebSocket Link with live push and reconnect catch-up, not business-data polling or inbound phone webhooks. The cloud stores the desired snapshot and ordered operations; Clock App stores the local execution snapshot and offline outbox.
-
-For the personal alarm-only control plane, a random User ID plus revocable permissions is the accepted first-version identity model; a separate device credential is optional hardening. See [clock-sync.md](clock-sync.md) for the identity, Link lifecycle, database, conflict, deletion, and recovery proposal.
-
-### Agent interface
-
-Decision confirmed on 2026-11-18: **HTTP/JSON is the only core Agent interface; no CLI will be maintained.** Named HTTP RPC endpoints keep the first version small:
+### Agent Alarm
 
 ```text
-POST /v1/alarm.set
-POST /v1/alarm.cancel
-GET  /v1/alarm.list
-GET  /v1/device.status
-GET  /v1/operation.get
+用户在 Pocket 编辑 Prompt 与触发计划
+→ Cloud 到点生成投递
+→ POST 到绑定的 Agent EP
+→ Agent 接收并返回 202 Accepted
+→ Pocket 将本次投递标记完成
 ```
 
-A future MCP server is only a thin adapter over these endpoints. `alarm.set` returns `ACCEPTED` with an operation ID; actual device execution is read separately through `operation.get`.
+手机是编辑入口，云端触发不依赖手机在线。`202 Accepted` 表示 Agent 已接收并持久化或排队，不代表 Prompt 已处理完。
 
-## Shared interface
+Agent 可通过 `result_callback_url` 可选回写结果；结果也可以只出现在 Agent 自己的 Session 中。
 
-`packages/agent-core/src/cron.js` exposes two functions:
+## 4. Cloud 共享能力
 
-- `cronExpression(schedule, time)` converts the three simple schedules into five-field Cron.
-- `createCronJob(input)` validates and returns a Prompt job containing schedule, `Asia/Shanghai` by default, notification policy, and `SCHEDULED` status.
+- **Identity & Permission**：随机 User ID、设备、Link、动作与资源权限。
+- **Link**：客户端主动建立 WebSocket，心跳、重连和在线状态。
+- **Sync**：当前快照、操作日志、持久 outbox、revision 和断点补同步。
+- **Scheduler**：保存并触发单次或周期计划，云端是定时触发权威。
+- **Prompt Delivery**：绑定 Agent EP、凭证、订阅源、投递和可选结果回写。
+- **Operation Record**：来源、幂等、因果链、客户端回执和投递状态。
 
-The browser prototype and Node tests cross this same interface. More schedule types should be added here rather than reimplemented in each app.
+这些能力通过稳定的领域接口向 Clock、Calendar、Notes 复用。
 
-## Near-term implementation order
+## 5. 领域扩展方式
 
-1. Align the shared capability and acknowledgement contracts.
-2. Validate one cloud-brokered alarm command end to end on Android.
-3. Add offline expiry and idempotent delivery before expanding capabilities.
-4. Decide Agent Cron scheduler ownership independently of the access transport.
-5. Add Calendar and Notes using the same identity and permission model.
-6. Build each app as an independent Android package; shared code must not collapse their package or release independence.
+新增领域时，依次增加：
 
-A live broker, scheduler, authentication, Android packaging, and production synchronization are intentionally outside the current prototype.
+1. 领域数据与业务规则。
+2. 该领域的 HTTP 能力和权限动作。
+3. 对应的独立 Android App 与本地执行适配。
+4. 与共享 Sync、Link、Scheduler 的接入。
+5. 端到端验收场景。
+
+当前首先完成 [Clock 领域架构](cloud/clock.md)。Calendar 和 Notes 后续分别新增领域文档，不改变本页的系统结构。
+
+## 6. 文档层级
+
+- [Pocket 总体架构](architecture.md)：系统对象、职责、主流程和扩展方式。
+- [Cloud 架构](cloud/architecture.md)：共享后端模块、数据、同步、权限、调度与投递。
+- [Clock 领域架构](cloud/clock.md)：普通闹钟、Lock、多设备、Agent Alarm 和客户端行为。
+- [发布规则](releases.md)：各 App 独立版本与 GitHub Release。
