@@ -1,14 +1,22 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const html = fs.readFileSync(path.join(__dirname, '../apps/clock/index.html'), 'utf8');
-const inlineScripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)];
-if (inlineScripts.length === 0) throw new Error('No inline clock script found');
-for (const [index, match] of inlineScripts.entries()) {
-  try {
-    new Function(match[1]);
-  } catch (error) {
-    throw new Error(`Clock inline script ${index + 1}: ${error.message}`);
+const apps = ['clock', 'calendar'];
+const scriptPattern = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g;
+
+for (const app of apps) {
+  const filePath = path.join(__dirname, `../apps/${app}/index.html`);
+  const html = fs.readFileSync(filePath, 'utf8');
+  const scripts = [...html.matchAll(scriptPattern)];
+  if (scripts.length === 0) {
+    throw new Error(`No inline script found in ${app}`);
   }
+  for (const [index, match] of scripts.entries()) {
+    try {
+      new Function(match[1]);
+    } catch (error) {
+      throw new Error(`${app} script ${index + 1}: ${error.message}`);
+    }
+  }
+  console.log(`${app} syntax OK (${scripts.length} inline script)`);
 }
-console.log(`Clock syntax OK (${inlineScripts.length} inline script)`);

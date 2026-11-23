@@ -1,5 +1,9 @@
 # Pocket Calendar
 
-Planned scope: events, reminders, and Agent-created schedules. Calendar and Agent entry points may attach a Clock reminder; the Clock app cannot initiate that link.
+Interactive HTML prototype (`apps/calendar/index.html`) following the [Pocket design standard](../../docs/design-standard.md) and [Calendar domain architecture](../../docs/cloud/calendar.md).
 
-Implementation has not started. This directory reserves the app's independent version and release lifecycle.
+## Three-tab structure
+
+- **`[d] 今日日程`**: Focused strictly on **today's** events (next/current event hero card + today's remaining timeline + interval overlap detection).
+- **`[m] 月历`**: Seven-column tabular month matrix with reminder indicators and per-day event inspection.
+- **`[t] Todo`**: Unified `@` assignee routing—configure plain todos, `@me` phone alarms (synced to Clock), and `@agent` scheduled Prompt jobs through **one shared interaction** (including inline `@handle HH:MM` parsing) instead of two separate forms.

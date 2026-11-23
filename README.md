@@ -7,11 +7,12 @@ Pocket targets general Android (packaged with shared Web UI + thin Kotlin native
 ## Status
 
 - **Clock**: interactive HTML prototype with alarms (optional one-off date, per-alarm local lock, skip-next, target device, and execution state), Agent plans (one-off and five-field Cron schedules bound to configured Agents), and world clock.
+- **Calendar**: interactive HTML prototype with **Today Agenda** (`[d]`), **7-column Month** (`[m]`), and **Todo** (`[t]`)—using unified `@me / @agent` assignee routing to configure Clock alarms and Agent plans in one shared flow.
 - **Agent Core**: tested Prompt + one-off / local-time Cron plan contract.
 - **Pocket Cloud & Web Workspace**: architecture and Python 3.12 + FastAPI + PostgreSQL stack finalized; implementation starts with Slice 1.
-- **Calendar / Notes**: scoped and registered in the monorepo; implementation has not started.
+- **Notes**: scoped and registered in the monorepo; implementation has not started.
 
-The aligned design is organized into the [Pocket architecture](docs/architecture.md), the shared [Cloud architecture](docs/cloud/architecture.md), the [Clock domain architecture](docs/cloud/clock.md), the evolving [Pocket design standard](docs/design-standard.md), and the finalized [backend & client technology stack](docs/research/backend-tech-stack.md).
+The aligned design is organized into the [Pocket architecture](docs/architecture.md), the shared [Cloud architecture](docs/cloud/architecture.md), the [Clock domain architecture](docs/cloud/clock.md), the [Calendar domain architecture](docs/cloud/calendar.md), the evolving [Pocket design standard](docs/design-standard.md), and the finalized [backend & client technology stack](docs/research/backend-tech-stack.md).
 
 ## Layout
 
