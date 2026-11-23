@@ -19,7 +19,7 @@ cloud/
 │   ├── 0002_events_todos_deliveries.sql
 │   └── 0003_sync_log.sql
 ├── src/pocket_cloud/
-│   ├── cli.py            # 启动入口：读取环境变量、执行迁移、拉起服务与定时循环
+│   ├── cli.py            # 服务启动与调试 CLI 胶水层（同走 HTTP/WS 接口，支持表格与 --json 输出）
 │   ├── config.py         # 配置校验（DATABASE_URL / POCKET_BOOTSTRAP_KEY / POCKET_SECRET_KEY）
 │   ├── context.py        # AppContext（持有连接池、加密器、在线手机连接表、时钟）
 │   ├── crypto.py         # SHA-256 令牌哈希与 AES-256-GCM 密钥加解密
@@ -50,6 +50,22 @@ cloud/
   - 错误响应：`{"error": {"code": "...", "message": "..."}}`（对应 `400 / 401 / 403 / 404 / 409 / 422 / 429`）。
 - **`POST /v1/deliveries/{delivery_id}/result`**：Agent 携带单次 `callback_token` 回传执行摘要。
 - **`GET /v1/link`**：手机端实时同步 WebSocket。
+
+### 1.4 调试 CLI 胶水层规范（`pocket-cloud` 命令行）
+CLI 既用于启动服务端，也作为调用后端 HTTP / WebSocket 接口的薄客户端胶水层（默认读取 `POCKET_URL` 与 `POCKET_TOKEN`，默认输出对齐表格，加 `--json` 输出原始 JSON），每个开发阶段同步交付对应子命令：
+
+- **服务运行**：`pocket-cloud serve`（启动服务）· `pocket-cloud status`（检查健康与当前身份）
+- **Step 1 命令**：
+  - `pocket-cloud pair create` / `pocket-cloud pair claim <code> --name <dev>`
+  - `pocket-cloud token create --kind agent --label <name> --scopes event.read,todo.write` / `list` / `revoke <id>`
+  - `pocket-cloud agent set <@id> --url <https://...> --key <secret>` / `list` / `revoke <@id>`
+- **Step 2 命令**：
+  - `pocket-cloud event list [--from YYYY-MM-DD --to YYYY-MM-DD]` / `add` / `delete <id>`
+  - `pocket-cloud todo list` / `add "<文本，支持 @me 07:30 或 @agent 16:00 快捷解析>"` / `toggle <id>` / `delete <id>`
+  - `pocket-cloud trigger <todo_id>`（**调试利器**：无需等时间到点，立即触发一次指定 `@agent` 任务并打印返回码与投递编号）
+- **Step 3 命令**：
+  - `pocket-cloud sync watch [--from-seq 0]`（在终端实时打印长连接推送流）
+  - `pocket-cloud sync ack <todo_or_event_id> --status EXECUTED`（无需真机即可在命令行模拟手机回传响铃状态）
 
 ---
 

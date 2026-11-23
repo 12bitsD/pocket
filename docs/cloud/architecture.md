@@ -28,3 +28,4 @@ Pocket Cloud 是 **Pocket Calendar**（日程与时间）和 **Pocket Notes**（
   - `GET /healthz`：健康检查
   - `POST /v1/deliveries/{delivery_id}/result`：Agent 携带一次性回调密钥写回结果摘要
   - `GET /v1/link`：手机与网页端实时同步长连接（补发 `sync_log` 与接收手机 `EXECUTED` 响铃回执）
+- **调试 CLI 胶水层（`pocket-cloud`）**：复用同一套 HTTP/WS 接口提供命令行快捷操作（配对、密钥签发、日程/Todo 增删查、`trigger` 立即触发 Agent 调试、`sync watch / ack` 盯盘与模拟手机回执）。
