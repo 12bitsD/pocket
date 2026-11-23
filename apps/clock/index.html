@@ -3,399 +3,1124 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Pocket Clock · Terminal</title>
-  <!-- 2026-11-18 用户反馈“本质上是 Cronjob 定时启动一个 Prompt”：Agent 入口以 Prompt 与调度计划为核心，不沿用普通闹钟的提醒语义。 -->
-  <style>
-    :root { font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; --target: 48px; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-block-size: 100dvh; display: grid; place-items: center; background: #eee; color: #222; }
-    button, input, select, textarea { font: inherit; font-size: max(1rem, 1em); }
-    button, input, select, textarea { min-block-size: var(--target); }
-    button { color: inherit; background: #fff; cursor: pointer; }
-    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid #222; outline-offset: 2px; }
-    h1, h2, h3, p { margin: 0; }
-    h1 { font-size: 29px; }
-    h2 { font-size: 17px; }
-    fieldset { margin: 16px 0 0; padding: 0; border: 0; }
-    legend { margin-block-end: 7px; color: #666; font-size: 12px; }
-    .phone { position: relative; inline-size: min(430px, 100%); block-size: min(900px, calc(100dvh - 32px)); display: flex; flex-direction: column; background: #fff; border: 2px solid #222; }
-    .topbar { min-block-size: 68px; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-block-end: 1px solid #999; }
-    .title-group { display: flex; align-items: center; gap: 7px; min-inline-size: 0; }
-    .top-actions { display: flex; gap: 8px; }
-    .text-button, .icon-button { padding: 0 10px; border: 1px solid #777; border-radius: 6px; }
-    .icon-button { min-inline-size: 48px; font-size: 22px; }
-    .back-button { padding-inline: 8px; }
-    .content { flex: 1; overflow-y: auto; padding: 18px 17px 24px; scroll-padding-bottom: 100px; }
-    .next { display: grid; grid-template-columns: 1fr auto; align-items: center; border: 2px solid #222; border-radius: 8px; }
-    .next-main { padding: 20px; border: 0; text-align: start; }
-    .label { display: block; color: #666; font-size: 12px; }
-    .next-time { display: block; margin-block: 9px 5px; font-size: 66px; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.05em; }
-    .next-title { display: block; font-size: 18px; font-weight: 700; }
-    .next-meta { display: block; margin-block-start: 8px; color: #555; font-size: 13px; }
-    .switch { inline-size: 48px; min-inline-size: 48px; block-size: 28px; min-block-size: 28px; margin-inline-end: 16px; border: 2px solid #222; border-radius: 20px; padding: 2px; }
-    .switch::before { content: ""; display: block; inline-size: 18px; block-size: 18px; border-radius: 50%; background: #fff; border: 1px solid #222; transition: transform .15s; }
-    .switch[aria-pressed="true"] { background: #555; }
-    .switch[aria-pressed="true"]::before { transform: translateX(18px); }
-    .section-heading { display: flex; align-items: center; justify-content: space-between; margin: 22px 0 9px; }
-    .list { border-block-start: 1px solid #999; }
-    .list-row { display: grid; grid-template-columns: 1fr auto; align-items: center; border-block-end: 1px solid #bbb; }
-    .row-main { display: grid; grid-template-columns: 82px 1fr; gap: 12px; align-items: center; padding: 15px 4px; border: 0; text-align: start; }
-    .row-time { font-size: 25px; font-variant-numeric: tabular-nums; }
-    .row-title { font-size: 14px; font-weight: 650; }
-    .row-meta { display: block; margin-block-start: 4px; color: #666; font-size: 12px; }
-    .empty { padding: 38px 16px; border: 1px dashed #888; text-align: center; color: #666; }
-    .empty button { margin-block-start: 14px; }
-    .bottom-nav { display: grid; grid-template-columns: repeat(4, 1fr); border-block-start: 2px solid #222; }
-    .nav-item { min-block-size: 64px; padding: 8px 2px; border: 0; border-inline-end: 1px solid #bbb; border-radius: 0; font-size: 12px; }
-    .nav-item:last-child { border-inline-end: 0; }
-    .nav-item[aria-current="page"] { background: #ddd; font-weight: 750; }
-    .city-time { font-size: 26px; font-variant-numeric: tabular-nums; }
-    .big-display { padding: 50px 10px; border: 1px solid #777; border-radius: 8px; text-align: center; font-size: 58px; font-variant-numeric: tabular-nums; }
-    .display-caption { margin-block-start: 11px; color: #666; font-size: 13px; text-align: center; }
-    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-block-start: 16px; }
-    .controls.single { grid-template-columns: 1fr; }
-    .controls button, .full-button { min-block-size: 48px; border: 1px solid #555; border-radius: 6px; }
-    .controls .primary, .full-button { background: #ddd; font-weight: 750; }
-    .full-button { inline-size: 100%; }
-    .preset-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
-    .preset-row button { padding: 0 4px; border: 1px solid #777; border-radius: 5px; font-size: 12px; }
-    .segments { display: grid; grid-template-columns: 1fr 1fr; margin-block-end: 14px; border: 1px solid #777; }
-    .segments button { border: 0; border-radius: 0; }
-    .segments button[aria-pressed="true"] { background: #ddd; font-weight: 750; }
-    .job { padding: 15px 3px; border-block-end: 1px solid #bbb; }
-    .job-title { font-size: 15px; font-weight: 700; line-height: 1.45; }
-    .job-meta { margin-block-start: 6px; color: #666; font-size: 12px; line-height: 1.5; }
-    .status { display: inline-block; margin-block-start: 8px; padding: 3px 7px; border: 1px solid #777; font-size: 11px; }
-    details.advanced { margin-block-start: 16px; border-block-start: 1px solid #bbb; padding-block-start: 10px; }
-    .advanced summary { min-block-size: 40px; cursor: pointer; }
-    dialog { inline-size: min(430px, 100%); max-block-size: 88dvh; margin: auto 0 0; padding: 0; border: 2px solid #222; border-block-end: 0; background: #fff; color: #222; }
-    dialog::backdrop { background: rgba(0,0,0,.35); overscroll-behavior: contain; }
-    dialog:modal { overscroll-behavior: contain; }
-    .dialog-body { padding: 18px 20px 20px; }
-    .dialog-heading { display: flex; align-items: center; justify-content: space-between; margin-block-end: 12px; }
-    .dialog-heading h2 { font-size: 21px; }
-    .dialog-heading button { border: 0; font-size: 20px; }
-    .field { display: grid; gap: 7px; margin-block-start: 14px; }
-    .field label { color: #666; font-size: 12px; }
-    .field input, .field select, .field textarea { inline-size: 100%; padding: 0 10px; border: 1px solid #777; border-radius: 5px; background: #fff; }
-    .prompt-input { min-block-size: 108px; padding-block: 10px; resize: vertical; line-height: 1.5; }
-    .cron-preview { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin-block-start: 14px; padding: 10px; border: 1px solid #777; font-family: ui-monospace, monospace; font-size: 11px; }
-    .cron-preview code { text-align: center; }
-    .time-input { font-size: 36px; text-align: center; font-variant-numeric: tabular-nums; }
-    .choices { display: flex; flex-wrap: wrap; gap: 8px; }
-    .choice { position: relative; }
-    .choice input { position: absolute; clip-path: inset(50%); inline-size: 1px; block-size: 1px; }
-    .choice span { display: grid; place-items: center; min-block-size: 44px; padding: 0 13px; border: 1px solid #777; border-radius: 5px; }
-    .choice input:checked + span { background: #ddd; border: 2px solid #222; }
-    .choice input:focus-visible + span { outline: 2px solid #222; outline-offset: 2px; }
-    .dialog-actions { margin-block-start: 20px; }
-    .toast { position: absolute; inset-inline: 18px; inset-block-end: 80px; padding: 12px; border: 1px solid #222; background: #fff; text-align: center; font-size: 13px; opacity: 0; pointer-events: none; }
-    .toast.show { opacity: 1; }
-    @media (max-width: 560px) { body { display: block; } .phone { inline-size: 100%; block-size: 100dvh; border: 0; } }
-    @media (max-width: 350px) { .content { padding-inline: 12px; } .next-time { font-size: 54px; } .row-main { grid-template-columns: 70px 1fr; gap: 8px; } }
-    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
-  </style>
+  <title>Pocket Clock</title>
+  <!--
+    Design history & aligned decisions (see docs/design-standard.md):
+    - 2026-11-18: Agent 计划本质是定时向外部 Agent 投递 Prompt，不触发手机响铃。
+    - 2026-11-23: 融合活字工单与终端命令骨相；轻字重 SF Mono + 苹方双字体，仅用「朱砂底纹签 + 松烟绿微圆点」标记重点。
+    - 2026-11-23: 移除秒表与计时器，拍平底部三栏；背景底层采用盲文子像素余弦相位曲线 + 狄拉克脉冲与模同余数学图谱；
+      单次闹钟支持选择具体日期，按真实日期时间戳计算下一次响铃顺位与倒计时。
+  -->
   <link rel="stylesheet" href="../../packages/design-system/terminal.css">
 </head>
 <body data-theme="white">
-  <main class="phone" aria-label="Pocket Clock 编辑器文档风交互稿">
+  <main class="phone" aria-label="Pocket Clock 交互原型">
+    <div class="ascii-underlay" aria-hidden="true">
+      <pre class="ascii-canvas" id="ascii-canvas"></pre>
+    </div>
+
+    <div class="tty-bar">
+      <span class="tty-path" id="tty-path"><b>$</b>pocket/alarms</span>
+      <span class="tty-stat" id="tty-stat"></span>
+    </div>
+
     <header class="topbar">
-      <div class="title-group"><button class="icon-button back-button" id="back-button" aria-label="返回闹钟" hidden>←</button><h1 id="page-title" tabindex="-1">闹钟</h1></div>
-      <div class="top-actions"><button class="text-button theme-toggle" id="theme-toggle" aria-label="切换黑白主题">B/W</button><button class="text-button" id="settings-button">通讯</button><button class="icon-button" id="create-button" aria-label="新建">＋</button></div>
+      <div class="title-group">
+        <button class="cmd-quiet outlined" id="back-button" type="button" aria-label="返回" hidden>← back</button>
+        <h1 id="page-title" tabindex="-1">闹钟</h1>
+        <span class="header-sub" id="page-sub">/alarms</span>
+      </div>
+      <div class="top-actions">
+        <button class="cmd-quiet" id="theme-toggle" type="button" aria-label="切换深浅纸面">b/w</button>
+        <button class="cmd-quiet outlined" id="settings-button" type="button">cfg</button>
+        <button class="cmd-primary" id="create-button" type="button">+ add</button>
+      </div>
     </header>
-    <div class="pipeline" aria-label="工作流"><span>01 SET</span><i>→</i><span>02 LINK</span><i>→</i><span>03 RING</span><i>→</i><span>04 LOG</span></div>
+
     <section class="content" id="content"></section>
-    <nav class="bottom-nav" id="bottom-nav" aria-label="四个基础功能"></nav>
-    <div class="toast" id="toast" role="status"></div>
+    <nav class="bottom-nav" id="bottom-nav" aria-label="主导航"></nav>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
   </main>
 
   <dialog id="form-dialog" closedby="any" aria-labelledby="dialog-title">
-    <div class="dialog-body">
-      <div class="dialog-heading"><h2 id="dialog-title">新建闹钟</h2><button id="dialog-close" aria-label="关闭">×</button></div>
-      <form id="active-form" method="dialog" aria-labelledby="dialog-title"></form>
+    <div class="dialog-head">
+      <h2 id="dialog-title">新建</h2>
+      <button class="cmd-quiet" id="dialog-close" type="button" aria-label="关闭">[esc]</button>
     </div>
+    <form class="dialog-body" id="active-form" method="dialog" aria-labelledby="dialog-title"></form>
   </dialog>
 
   <script src="../../packages/agent-core/src/cron.js"></script>
   <script>
-    const titles = { alarm: '闹钟', world: '世界时钟', stopwatch: '秒表', timer: '计时器', settings: '通讯中心' };
-    const navItems = [['alarm','闹钟','A'],['world','世界时钟','W'],['stopwatch','秒表','S'],['timer','计时器','T']];
-    const navIcons = {
-      alarm: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 17c2-1 2-3 2-5 0-4 2-6 5-6s5 2 5 6c0 2 0 4 2 5-4 1-10 1-14 0ZM8 20l2 1M16 20l-2 1M5 7 3 5M19 7l2-2" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
-      world: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 12c0 5-4 8-8 8s-8-3-8-8 4-8 8-8 8 3 8 8ZM4 12h16M12 4c-3 4-3 12 0 16M12 4c3 4 3 12 0 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
-      stopwatch: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 2h6M12 2v3M12 10v4l3 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M18 7c3 3 3 9-1 12-4 3-11 0-12-5C3 9 5 5 9 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>',
-      timer: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12M6 21h12M8 3c-1 4 7 6 8 9s-7 5-8 9M16 3c1 4-7 6-8 9s7 5 8 9" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+    const pageMeta = {
+      alarm: ['闹钟', '/alarms', '+ add'],
+      crontab: ['Agent 计划', '/crontab', '+ job'],
+      world: ['世界时钟', '/world', '+ city'],
+      settings: ['配置', '/config', '']
     };
+    const navItems = [
+      ['alarm', '闹钟', 'a'],
+      ['crontab', 'Agent 计划', 'p'],
+      ['world', '世界时钟', 'w']
+    ];
+    const weekNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const brailleLeft = [0x01, 0x02, 0x04, 0x40];
+    const brailleRight = [0x08, 0x10, 0x20, 0x80];
+
     const content = document.querySelector('#content');
     const bottomNav = document.querySelector('#bottom-nav');
     const dialog = document.querySelector('#form-dialog');
     const form = document.querySelector('#active-form');
     const createButton = document.querySelector('#create-button');
     const backButton = document.querySelector('#back-button');
+
     let current = 'alarm';
-    let agentTab = 'tasks';
+    let lastMainPage = 'alarm';
     let editingAlarm = null;
-    let alarms = [
-      { id: 1, time: '07:30', title: '起床', meta: '日历联动 · 会前 90 分钟', enabled: true },
-      { id: 2, time: '08:15', title: '出门', meta: '工作日 · 响铃', enabled: true },
-      { id: 3, time: '18:30', title: '复盘今日安排', meta: '每天 · 仅通知', enabled: false }
-    ];
-    let jobs = [
-      { title: '读取本周笔记，生成周报草稿；完成后提醒我检查', meta: 'SCHEDULE: 每周五 16:00 · Asia/Shanghai\nCRON: 0 16 * * 5 · 完成后提醒', status: 'SCHEDULED' },
-      { title: '检查今日构建状态，失败时通知我', meta: 'SCHEDULE: 工作日 09:30 · Asia/Shanghai\nCRON: 30 9 * * 1-5 · 仅异常提醒', status: 'SCHEDULED' }
-    ];
-    const outcomes = [
-      { title: '汇总明日出差材料', meta: '昨天 18:00 完成 · 已创建 06:45 提醒', status: '已完成' },
-      { title: '读取本周日程', meta: '周一 09:00 · 设备离线，已超期跳过', status: '未执行' }
-    ];
-    let cities = [
-      ['北京','Asia/Shanghai'], ['伦敦','Europe/London'], ['纽约','America/New_York'], ['悉尼','Australia/Sydney']
-    ];
-    let connectionAlive = false;
+    let editingPlan = null;
+    let cloudOnline = true;
+    let outboxCount = 0;
     let toastTimer;
+
+    function localDateIso(offsetDays = 0) {
+      const d = new Date();
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() + offsetDays);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    function defaultOnceDate(hhmm) {
+      const now = new Date();
+      const [h, m] = hhmm.split(':').map(Number);
+      const passed = h * 60 + m <= now.getHours() * 60 + now.getMinutes();
+      return localDateIso(passed ? 1 : 0);
+    }
+
+    let agents = [
+      { id: '@work-agent', name: '主力工作 Agent', endpoint: 'https://agent.example.com', active: true },
+      { id: '@ci-watcher', name: '构建巡检 Bot', endpoint: 'https://ci-bot.example.com', active: true }
+    ];
+
+    let alarms = [
+      {
+        id: 1,
+        time: '07:30',
+        date: defaultOnceDate('07:30'),
+        title: '早起赶高铁',
+        repeat: '仅一次',
+        delivery: '响铃',
+        target: 'phone',
+        locked: true,
+        linkedEvent: false,
+        skippedOnce: false,
+        state: 'EXECUTED',
+        enabled: true
+      },
+      {
+        id: 2,
+        time: '08:15',
+        date: '',
+        title: '出门晨会',
+        repeat: '工作日',
+        delivery: '响铃',
+        target: 'phone',
+        locked: false,
+        linkedEvent: true,
+        skippedOnce: false,
+        state: 'EXECUTED',
+        enabled: true
+      },
+      {
+        id: 3,
+        time: '13:50',
+        date: '',
+        title: '午休结束',
+        repeat: '每天',
+        delivery: '响铃',
+        target: 'local-only',
+        locked: true,
+        linkedEvent: false,
+        skippedOnce: false,
+        state: 'EXECUTED',
+        enabled: true
+      },
+      {
+        id: 5,
+        time: '06:40',
+        date: localDateIso(3),
+        title: '机场值机出发',
+        repeat: '仅一次',
+        delivery: '响铃',
+        target: 'phone',
+        locked: false,
+        linkedEvent: false,
+        skippedOnce: false,
+        state: 'EXECUTED',
+        enabled: true
+      },
+      {
+        id: 4,
+        time: '22:30',
+        date: '',
+        title: '睡前阅读提醒',
+        repeat: '每天',
+        delivery: '仅通知',
+        target: 'phone',
+        locked: false,
+        linkedEvent: false,
+        skippedOnce: false,
+        state: 'PAUSED',
+        enabled: false
+      }
+    ];
+
+    let plans = [
+      {
+        id: 101,
+        agentId: '@work-agent',
+        prompt: '整理本周笔记草稿，生成周五复盘清单',
+        mode: 'cron',
+        schedule: '每周五',
+        time: '16:00',
+        ttlMinutes: 15,
+        missedPolicy: 'skip',
+        spec: '0 16 * * 5 · 每周五 16:00 · ttl=15m · missed=skip',
+        status: '202 COMPLETED',
+        statusKind: 'ok',
+        enabled: true,
+        receipt: '回传：已生成 4 条待办至周报会话',
+        receiptTime: '16:01'
+      },
+      {
+        id: 102,
+        agentId: '@ci-watcher',
+        prompt: '检查今晚发布流水线状态，失败时发飞书提醒我',
+        mode: 'once',
+        schedule: '每天',
+        time: '23:30',
+        ttlMinutes: 15,
+        missedPolicy: 'skip',
+        spec: 'at 23:30 · ttl=15m · 附一次性回调密钥',
+        status: '今晚 23:30 单次',
+        statusKind: 'wait',
+        enabled: true,
+        receipt: '尚未到点，等待云端触发',
+        receiptTime: 'SCHEDULED'
+      },
+      {
+        id: 103,
+        agentId: '@work-agent',
+        prompt: '汇总早间日程冲突',
+        mode: 'once',
+        schedule: '每天',
+        time: '08:00',
+        ttlMinutes: 15,
+        missedPolicy: 'skip',
+        spec: 'at 昨日 08:00 · 超过 08:15 截止窗口停止重发',
+        status: 'EXPIRED · 已超期',
+        statusKind: 'expired',
+        enabled: false,
+        receipt: '',
+        receiptTime: ''
+      }
+    ];
+
+    let cities = [
+      ['北京', 'Asia/Shanghai'],
+      ['伦敦', 'Europe/London'],
+      ['纽约', 'America/New_York'],
+      ['悉尼', 'Australia/Sydney']
+    ];
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[ch]);
+    }
+
     function toast(message) {
       const el = document.querySelector('#toast');
-      el.textContent = `${message}（演示）`;
+      el.textContent = message;
       el.classList.add('show');
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+      toastTimer = setTimeout(() => {
+        el.classList.remove('show');
+      }, 1800);
     }
-    function switchHtml(id, enabled, label) {
-      return `<button class="switch" aria-label="${label}" aria-pressed="${enabled}" data-switch="${id}"></button>`;
+
+    function switchHtml(id, enabled, label, attr = 'data-switch') {
+      return `<button class="dip-switch" type="button" aria-label="${escapeHtml(label)}" aria-pressed="${enabled}" ${attr}="${id}"><i></i>${enabled ? 'ON' : 'OFF'}</button>`;
     }
-    function escapeHtml(value) {
-      return String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+
+    function nextTriggerDate(item) {
+      const now = new Date();
+      const [h, m] = item.time.split(':').map(Number);
+      if (item.repeat === '仅一次' && item.date) {
+        const [yy, mm, dd] = item.date.split('-').map(Number);
+        const target = new Date(yy, mm - 1, dd, h, m, 0, 0);
+        if (target.getTime() > now.getTime()) {
+          return target;
+        }
+      }
+      const candidate = new Date(now);
+      candidate.setHours(h, m, 0, 0);
+      if (candidate.getTime() <= now.getTime()) {
+        candidate.setDate(candidate.getDate() + 1);
+      }
+      if (item.repeat === '工作日') {
+        while (candidate.getDay() === 0 || candidate.getDay() === 6) {
+          candidate.setDate(candidate.getDate() + 1);
+        }
+      }
+      return candidate;
     }
-    function alarmPage() {
-      const next = alarms.find((item) => item.enabled);
-      return `${next ? `<article class="next"><span class="hero-art" aria-hidden="true"><svg viewBox="0 0 160 120"><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M42 43 L31 28 M117 43 L128 28"/><path d="M37 55 C29 75 36 96 55 104 C75 113 108 108 121 88 C133 69 124 46 103 36 C82 26 48 32 37 55 Z"/><path d="M50 105 L42 114 M110 105 L119 114"/><path d="M80 49 L80 78 L99 87"/><path d="M21 40 L12 34 M19 54 L7 53 M139 40 L148 34 M141 54 L153 53"/></g><g fill="currentColor"><rect x="76" y="75" width="7" height="7"/><rect x="139" y="12" width="5" height="5"/><rect x="147" y="19" width="5" height="5"/><rect x="139" y="26" width="5" height="5"/></g></svg></span><button class="next-main" data-edit="${next.id}"><span class="label">NEXT_ALARM</span><span class="next-time">${next.time}</span><span class="next-title">${next.title}</span><span class="next-meta">${next.meta}</span></button>${switchHtml(next.id, next.enabled, '启用下一次闹钟')}</article>` : `<div class="empty">没有启用的闹钟<br><button class="text-button" data-create="alarm">新建一个</button></div>`}
-        <div class="section-heading"><h2>MY_ALARMS</h2></div>
-        <div class="list">${alarms.map((item) => `<article class="list-row"><button class="row-main" data-edit="${item.id}"><span class="row-time">${item.time}</span><span><span class="row-title">${item.title}</span><span class="row-meta">${item.meta}</span></span></button>${switchHtml(item.id, item.enabled, `启用${item.title}`)}</article>`).join('')}</div>
-        <div class="section-heading"><h2>AGENT_CRON_JOBS</h2></div>
-        <div class="list">${jobs.map((job) => `<article class="job"><h3 class="job-title">${escapeHtml(job.title)}</h3><p class="job-meta">${escapeHtml(job.meta).replaceAll('\n','<br>')}</p><span class="status">${job.status}</span></article>`).join('')}</div>`;
+
+    function deltaMinutesForAlarm(item) {
+      return Math.max(1, Math.round((nextTriggerDate(item).getTime() - Date.now()) / 60000));
     }
+
+    function formatDelta(diffMins) {
+      if (diffMins >= 1440) {
+        const days = Math.floor(diffMins / 1440);
+        const hours = Math.floor((diffMins % 1440) / 60);
+        return `${days}d ${String(hours).padStart(2, '0')}h`;
+      }
+      return `${Math.floor(diffMins / 60)}h ${String(diffMins % 60).padStart(2, '0')}m`;
+    }
+
+    function formatAlarmScheduleLabel(item) {
+      if (item.repeat !== '仅一次' || !item.date) {
+        return item.repeat;
+      }
+      const today = localDateIso(0);
+      const tomorrow = localDateIso(1);
+      if (item.date === today) {
+        return '今天';
+      }
+      if (item.date === tomorrow) {
+        return `明天 ${item.date.slice(5)}`;
+      }
+      const [yy, mm, dd] = item.date.split('-').map(Number);
+      const wk = weekNames[new Date(yy, mm - 1, dd).getDay()];
+      return `${item.date.slice(5)} ${wk}`;
+    }
+
+    function activeSortedAlarms() {
+      return [...alarms]
+        .filter((item) => item.enabled && !item.skippedOnce)
+        .sort((a, b) => nextTriggerDate(a).getTime() - nextTriggerDate(b).getTime());
+    }
+
+    function renderTtyBar() {
+      const pathEl = document.querySelector('#tty-path');
+      const statEl = document.querySelector('#tty-stat');
+      const slug = pageMeta[current][1].slice(1);
+      pathEl.innerHTML = `<b>$</b>pocket/${slug}`;
+      if (current === 'crontab') {
+        const activeCount = agents.filter((a) => a.active).length;
+        statEl.innerHTML = `<i class="dot ok"></i>${activeCount} agents bound`;
+        return;
+      }
+      statEl.innerHTML = cloudOnline
+        ? `<i class="dot ok"></i>online · outbox ${outboxCount}`
+        : `<i class="dot off"></i>offline · outbox ${outboxCount}`;
+    }
+
+    /* 使用 Unicode 盲文 2x4 微点阵绘制平滑连续余弦波 φ(t) = -cos(2πt/1440) 与狄拉克采样脉冲 */
+    function buildBrailleWave(charCols, charRows, activeAlarms, nowMinutes) {
+      const subW = charCols * 2;
+      const subH = charRows * 4;
+      const midY = Math.floor(subH / 2);
+      const grid = Array.from({ length: charRows }, () => Array(charCols).fill(0));
+      const overlay = new Map();
+
+      const setDot = (sx, sy) => {
+        if (sx < 0 || sx >= subW || sy < 0 || sy >= subH) {
+          return;
+        }
+        const cx = Math.floor(sx / 2);
+        const cy = Math.floor(sy / 4);
+        const bit = sx % 2 === 0 ? brailleLeft[sy % 4] : brailleRight[sy % 4];
+        grid[cy][cx] |= bit;
+      };
+
+      for (let sx = 0; sx < subW; sx += 3) {
+        setDot(sx, midY);
+      }
+
+      const samples = subW * 4;
+      for (let i = 0; i <= samples; i += 1) {
+        const sx = Math.min(subW - 1, Math.floor(i / 4));
+        const theta = (i / samples) * Math.PI * 2;
+        const norm = (1 + Math.cos(theta)) / 2;
+        const sy = Math.round(1 + norm * (subH - 3));
+        setDot(sx, sy);
+      }
+
+      activeAlarms.forEach((item, idx) => {
+        const [h, m] = item.time.split(':').map(Number);
+        const mins = h * 60 + m;
+        const sx = Math.min(subW - 1, Math.round((mins / 1440) * (subW - 1)));
+        const theta = (mins / 1440) * Math.PI * 2;
+        const sy = Math.round(1 + ((1 + Math.cos(theta)) / 2) * (subH - 3));
+        const top = Math.min(sy, midY);
+        const bot = Math.max(sy, midY);
+        for (let y = top; y <= bot; y += 1) {
+          setDot(sx, y);
+        }
+        const key = `${Math.floor(sy / 4)}:${Math.floor(sx / 2)}`;
+        if (!overlay.has(key)) {
+          overlay.set(key, idx === 0 ? '<span class="mark">◆</span>' : '<span class="hi">●</span>');
+        }
+      });
+
+      const nowSx = Math.min(subW - 1, Math.round((nowMinutes / 1440) * (subW - 1)));
+      const nowTheta = (nowMinutes / 1440) * Math.PI * 2;
+      const nowSy = Math.round(1 + ((1 + Math.cos(nowTheta)) / 2) * (subH - 3));
+      const nowKey = `${Math.floor(nowSy / 4)}:${Math.floor(nowSx / 2)}`;
+      if (!overlay.has(nowKey)) {
+        overlay.set(nowKey, '<span class="hi">▲</span>');
+      }
+
+      return grid.map((row, r) => row.map((mask, c) => {
+        const k = `${r}:${c}`;
+        if (overlay.has(k)) {
+          return overlay.get(k);
+        }
+        return mask === 0 ? ' ' : String.fromCodePoint(0x2800 + mask);
+      }).join(''));
+    }
+
+    function renderAsciiUnderlay() {
+      const canvas = document.querySelector('#ascii-canvas');
+      if (!canvas) {
+        return;
+      }
+      const now = new Date();
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const nowStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const active = activeSortedAlarms();
+      const waveLines = buildBrailleWave(48, 5, active, nowMinutes);
+
+      const setExpr = active.length
+        ? active.slice(0, 3).map((a) => a.time).join(', ')
+        : '∅';
+      const eq1 = current === 'crontab'
+        ? `S = { t ∈ ℕ │ cron(t)=1 }   ttl = 900s   t_now = ${nowStr}`
+        : current === 'world'
+          ? `θ(z) ≡ t₀ + Δz (mod 24)   ω = 15°/h   t_loc = ${nowStr}`
+          : `t ∈ ℤ/1440ℤ   φ(t) = −cos(2πt/24h)   ▲ now = ${nowStr}`;
+      const eq2 = current === 'crontab'
+        ? 'POST ↦ 202 Accepted   H(k_cb) ≠ H(k_ep)   idempotent'
+        : `f(t) = Σ δ(t − tₖ),  k ∈ { ${setExpr} }`;
+
+      const totalRows = 38;
+      const lines = [];
+      for (let r = 1; r <= totalRows; r += 1) {
+        const axis = r % 6 === 0 ? `τ${r / 6}` : String(r).padStart(2, '0');
+        if (r <= 28) {
+          lines.push(`${axis}│`);
+        } else if (r === 29) {
+          lines.push(`${axis}│   ∶       +       ·       ≡       ·       +       ∶`);
+        } else if (r === 30) {
+          lines.push(`${axis}│  <span class="hi">${eq1}</span>`);
+        } else if (r >= 31 && r <= 35) {
+          const wIdx = r - 31;
+          const prefix = wIdx === 0 ? '+1' : wIdx === 2 ? ' 0' : wIdx === 4 ? '−1' : '  ';
+          lines.push(`${axis}│${prefix} ${waveLines[wIdx]}`);
+        } else if (r === 36) {
+          lines.push(`${axis}│   00h         06h         12h         18h        24h`);
+        } else if (r === 37) {
+          lines.push(`${axis}│  <span class="hi">${eq2}</span>`);
+        } else {
+          lines.push(`${axis}│   ·       ∶       ∆       ·       ∈       ∶       ·`);
+        }
+      }
+      canvas.innerHTML = lines.join('\n');
+    }
+
+    function alarmsPage() {
+      const next = activeSortedAlarms()[0] || null;
+      const others = [...alarms]
+        .filter((item) => item.id !== next?.id)
+        .sort((a, b) => a.time.localeCompare(b.time));
+
+      const skipBtn = next && next.repeat !== '仅一次'
+        ? `<button class="cmd-quiet outlined mini" type="button" data-skip="${next.id}">跳过本次</button>`
+        : '';
+
+      const hero = next
+        ? `<article class="hero">
+            <div class="hero-top">
+              <span class="t-minus"><i class="dot mark"></i><b>${formatDelta(deltaMinutesForAlarm(next))}</b> 后响铃</span>
+              ${next.locked ? '<span class="mark-tag lock">LOCKED · 本机锁</span>' : '<span class="mark-tag neutral">云端可同步</span>'}
+            </div>
+            <div class="hero-mid">
+              <button class="hero-main-btn" type="button" data-edit="${next.id}">
+                <span class="hero-time">${escapeHtml(next.time)}</span>
+              </button>
+              <div class="hero-controls">
+                ${skipBtn}
+                ${switchHtml(next.id, next.enabled, `切换${next.title}`)}
+              </div>
+            </div>
+            <div class="hero-foot">
+              <div class="hero-name">${escapeHtml(next.title)} <span>${escapeHtml(formatAlarmScheduleLabel(next))} · ${escapeHtml(next.delivery)}</span></div>
+              <span class="receipt-code"><i class="dot ${next.state === 'EXECUTED' ? 'ok' : 'mark'}"></i>${escapeHtml(next.state)} · ${escapeHtml(next.target)}</span>
+            </div>
+          </article>`
+        : `<div class="empty">当前没有即将响铃的闹钟<br><button class="cmd-quiet outlined" type="button" data-open="alarm">+ 新建闹钟</button></div>`;
+
+      const rows = others.map((item) => {
+        const badges = [];
+        if (item.locked) {
+          badges.push('<span class="mark-tag lock">本机锁</span>');
+        }
+        if (item.linkedEvent) {
+          badges.push('<span class="mark-tag neutral">日历关联</span>');
+        }
+        if (item.skippedOnce) {
+          badges.push('<span class="mark-tag neutral">本次已跳过</span>');
+        }
+        const schedText = formatAlarmScheduleLabel(item);
+        const stateText = !item.enabled ? 'paused' : item.skippedOnce ? 'skip-next' : item.state;
+        const rightAction = item.skippedOnce
+          ? `<button class="cmd-quiet outlined mini" type="button" data-unskip="${item.id}">恢复本次</button>`
+          : switchHtml(item.id, item.enabled, `切换${item.title}`);
+
+        return `<article class="row ${item.enabled ? '' : 'disabled'}">
+          <button class="row-btn" type="button" data-edit="${item.id}">
+            <span class="row-time">${escapeHtml(item.time)}</span>
+            <span>
+              <span class="row-title">${escapeHtml(item.title)} ${badges.join(' ')}</span>
+              <span class="row-meta">${escapeHtml(schedText)} · ${escapeHtml(item.target)} · ${escapeHtml(stateText)}</span>
+            </span>
+          </button>
+          ${rightAction}
+        </article>`;
+      }).join('');
+
+      return `<div class="foreground-stack">
+        ${hero}
+        <div class="col-head"><span>OTHER ALARMS (${others.length})</span><span>STATE / ACTION</span></div>
+        <div class="rows">${rows}</div>
+      </div>`;
+    }
+
+    function crontabPage() {
+      const cards = plans.map((plan) => {
+        const badge = !plan.enabled && plan.statusKind !== 'expired'
+          ? '<span class="mark-tag neutral">PAUSED</span>'
+          : plan.statusKind === 'ok'
+            ? `<span class="receipt-code"><i class="dot ok"></i>${escapeHtml(plan.status)}</span>`
+            : plan.statusKind === 'wait'
+              ? `<span class="mark-tag lock">${escapeHtml(plan.status)}</span>`
+              : `<span>${escapeHtml(plan.status)}</span>`;
+        const out = plan.receipt
+          ? `<div class="jc-out"><span>↳ ${escapeHtml(plan.receipt)}</span><code>${escapeHtml(plan.receiptTime)}</code></div>`
+          : '';
+        return `<article class="job-card interactive ${plan.statusKind === 'expired' || !plan.enabled ? 'expired' : ''}" data-edit-plan="${plan.id}">
+          <div class="jc-head">
+            <span class="jc-target">post → <b>${escapeHtml(plan.agentId)}</b></span>
+            ${badge}
+          </div>
+          <p class="jc-prompt">${escapeHtml(plan.prompt)}</p>
+          <div class="jc-spec">${escapeHtml(plan.spec)}</div>
+          ${out}
+        </article>`;
+      }).join('');
+
+      return `<div class="foreground-stack">
+        <p class="man-line">云端按计划向指定 Agent 发送请求，手机关机照常触发；点击卡片可编辑、暂停或删除。</p>
+        <div class="jobs">${cards}</div>
+      </div>`;
+    }
+
+    function zoneOffsetHours(zone, date) {
+      const text = new Intl.DateTimeFormat('en-US', {
+        timeZone: zone,
+        timeZoneName: 'shortOffset'
+      }).formatToParts(date).find((p) => p.type === 'timeZoneName')?.value || 'GMT+0';
+      const match = /GMT([+-]\d+)(?::(\d+))?/.exec(text);
+      if (!match) {
+        return 0;
+      }
+      const hours = Number(match[1]);
+      const mins = Number(match[2] || 0);
+      return hours + (hours < 0 ? -mins / 60 : mins / 60);
+    }
+
     function worldPage() {
       const now = new Date();
-      return `<div class="list">${cities.map(([name, zone]) => {
-        const time = new Intl.DateTimeFormat('zh-CN', { timeZone: zone, hour: '2-digit', minute: '2-digit', hour12: false }).format(now);
-        const localDay = Number(new Intl.DateTimeFormat('en-CA', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now).replaceAll('-', ''));
-        const homeDay = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now).replaceAll('-', ''));
+      const homeOffset = zoneOffsetHours('Asia/Shanghai', now);
+      const homeDay = Number(
+        new Intl.DateTimeFormat('en-CA', {
+          timeZone: 'Asia/Shanghai',
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        }).format(now).replaceAll('-', '')
+      );
+      const list = cities.map(([name, zone], index) => {
+        const time = new Intl.DateTimeFormat('zh-CN', {
+          timeZone: zone,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).format(now);
+        const localDay = Number(
+          new Intl.DateTimeFormat('en-CA', {
+            timeZone: zone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+          }).format(now).replaceAll('-', '')
+        );
         const day = localDay === homeDay ? '今天' : localDay > homeDay ? '明天' : '昨天';
-        return `<article class="list-row"><div class="row-main"><div><h3 class="row-title">${name}</h3><span class="row-meta">${zone.replaceAll('_', ' ')}</span></div><div><div class="city-time">${time}</div><span class="row-meta">${day}</span></div></div></article>`;
-      }).join('')}</div>`;
+        const utcOff = zoneOffsetHours(zone, now);
+        const diff = utcOff - homeOffset;
+        const utcLabel = `UTC${utcOff >= 0 ? '+' : '−'}${Math.abs(utcOff)}`;
+        const diffLabel = diff === 0 ? 'Δ 0h' : `Δ ${diff > 0 ? '+' : '−'}${Math.abs(diff)}h`;
+        const removeBtn = cities.length > 1
+          ? `<button class="cmd-quiet mini" type="button" aria-label="移除${escapeHtml(name)}" data-remove-city="${index}">×</button>`
+          : '';
+        return `<article class="row">
+          <div class="row-btn">
+            <span class="row-time">${time}</span>
+            <span>
+              <span class="row-title">${escapeHtml(name)} <span class="mark-tag neutral">${utcLabel}</span></span>
+              <span class="row-meta">${escapeHtml(zone)} · ${day}</span>
+            </span>
+          </div>
+          <div class="city-right">
+            <span class="receipt-code">${diffLabel}</span>
+            ${removeBtn}
+          </div>
+        </article>`;
+      }).join('');
+      return `<div class="foreground-stack">
+        <div class="col-head"><span>LOCAL TIME (${cities.length})</span><span>OFFSET</span></div>
+        <div class="rows">${list}</div>
+      </div>`;
     }
-    const stopwatch = { elapsed: 0, startedAt: null };
-    function stopwatchValue() { return stopwatch.elapsed + (stopwatch.startedAt === null ? 0 : performance.now() - stopwatch.startedAt); }
-    function stopwatchText(value) {
-      const minutes = Math.floor(value / 60000);
-      const seconds = Math.floor(value / 1000) % 60;
-      const tenths = Math.floor(value / 100) % 10;
-      return `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${tenths}`;
-    }
-    function stopwatchPage() {
-      const running = stopwatch.startedAt !== null;
-      return `<div class="big-display" id="stopwatch-display">${stopwatchText(stopwatchValue())}</div><p class="display-caption">${running ? '正在计时' : stopwatchValue() ? '已暂停' : '准备开始'}</p><div class="controls"><button class="primary" data-stopwatch="toggle">${running ? '暂停' : '开始'}</button><button data-stopwatch="lap">计次</button></div>${stopwatchValue() && !running ? `<button class="text-button" data-stopwatch="reset" style="margin-top:12px">重置</button>` : ''}<div id="laps">${stopwatch.laps?.length ? `<div class="section-heading"><h2>计次</h2></div><div class="list">${stopwatch.laps.map((lap, index) => `<div class="job row-between"><span>计次 ${index + 1}</span><span>${lap}</span></div>`).join('')}</div>` : ''}</div>`;
-    }
-    const timer = { duration: 900000, remaining: 900000, endAt: null };
-    function timerValue() { return Math.max(0, timer.endAt === null ? timer.remaining : timer.endAt - Date.now()); }
-    function timerText(value) { const total = Math.ceil(value / 1000); return `${String(Math.floor(total / 60)).padStart(2,'0')}:${String(total % 60).padStart(2,'0')}`; }
-    function timerPage() {
-      const running = timer.endAt !== null;
-      return `<div class="big-display" id="timer-display">${timerText(timerValue())}</div><p class="display-caption">${running ? '剩余时间' : timer.remaining !== timer.duration ? '已暂停' : '设定时长'}</p><div class="controls ${running || timer.remaining !== timer.duration ? '' : 'single'}"><button class="primary" data-timer="toggle">${running ? '暂停' : timer.remaining === 0 ? '重新开始' : '开始'}</button>${running || timer.remaining !== timer.duration ? '<button data-timer="reset">取消</button>' : ''}</div><div class="section-heading"><h2>常用时长</h2></div><div class="preset-row">${[5,10,20,30].map((minutes) => `<button data-preset="${minutes}">${minutes} 分钟</button>`).join('')}</div>`;
-    }
+
     function settingsPage() {
-      return `<div class="section-heading" style="margin-top:0"><h2>连接</h2><span class="status">${connectionAlive ? 'Alive' : '未连接'}</span></div>
-        <form id="connection-form">
-          <div class="field"><label for="endpoint">EP / 中继地址</label><input id="endpoint" name="endpoint" value="wss://relay.example.com" autocomplete="off" required></div>
-          <div class="field"><label for="port">端口</label><input id="port" name="port" type="number" value="443" min="1" max="65535" required></div>
-          <div class="field"><label for="device-id">设备 ID</label><input id="device-id" name="deviceId" value="oppo" autocomplete="off" required></div>
-          <div class="field"><label for="token">Access Token</label><input id="token" name="token" type="password" placeholder="输入设备令牌" autocomplete="off"></div>
-          <div class="controls"><button type="button" data-toast="测试连接">测试连接</button><button class="primary" type="submit">保存并连接</button></div>
-        </form>
-        <details class="advanced"><summary>系统权限</summary><article class="job"><h3 class="job-title">精确闹钟与通知</h3><p class="job-meta">用于响铃和全屏提醒</p><button class="text-button" data-toast="检查通知权限">检查</button></article><article class="job"><h3 class="job-title">ColorOS 后台运行</h3><p class="job-meta">自启动、电池白名单与后台弹出</p><button class="text-button" data-toast="打开权限引导">引导</button></article></details>`;
+      const bindingsHtml = agents.map((ag) => `<article class="job-card ${ag.active ? '' : 'expired'}">
+        <div class="jc-head">
+          <span class="jc-target"><b>${escapeHtml(ag.id)}</b> · ${escapeHtml(ag.name)}</span>
+          <button class="dip-switch" type="button" aria-pressed="${ag.active}" data-toggle-agent="${escapeHtml(ag.id)}"><i></i>${ag.active ? 'ON' : 'OFF'}</button>
+        </div>
+        <div class="jc-spec">${escapeHtml(ag.endpoint)} · 密钥 •••••••• (加密存储，不回显)</div>
+      </article>`).join('');
+
+      return `<div class="foreground-stack">
+        <article class="hero">
+          <div class="hero-top">
+            <span class="t-minus">POCKET CLOUD LINK</span>
+            <span class="receipt-code"><i class="dot ${cloudOnline ? 'ok' : 'off'}"></i>${cloudOnline ? 'ONLINE' : 'OFFLINE'}</span>
+          </div>
+          <div class="jc-spec">wss://cloud.pocket.example/v1/link · device=phone · outbox=${outboxCount}</div>
+          <div class="hero-foot" style="margin-top:10px">
+            <span class="row-meta">断线期间本地闹钟照常响铃，恢复后补发队列</span>
+            <button class="cmd-quiet outlined" type="button" data-toggle-cloud>${cloudOnline ? '模拟断线' : '恢复连接'}</button>
+          </div>
+        </article>
+
+        <div class="col-head">
+          <span>AGENT BINDINGS (单独存储网址与密钥)</span>
+          <button class="cmd-quiet outlined" type="button" data-open="binding">+ 绑定</button>
+        </div>
+        <div class="jobs">${bindingsHtml}</div>
+
+        <details class="fold">
+          <summary>SYSTEM PERMISSIONS · 本机权限诊断</summary>
+          <div class="jobs" style="margin-top:10px">
+            <article class="job-card">
+              <div class="jc-head"><span>精确闹钟与全屏提醒</span><button class="cmd-quiet outlined" type="button" data-toast="已检查精确闹钟权限">检查</button></div>
+              <div class="jc-spec">Android 12+ 需授权 SCHEDULE_EXACT_ALARM</div>
+            </article>
+            <article class="job-card">
+              <div class="jc-head"><span>ColorOS 自启动与电池策略</span><button class="cmd-quiet outlined" type="button" data-toast="已打开设置引导">引导</button></div>
+              <div class="jc-spec">仅做显式状态检测与跳转，不绕过系统限制</div>
+            </article>
+          </div>
+        </details>
+      </div>`;
     }
-    function render(page = current) {
+
+    function render(page = current, animate = false) {
       current = page;
-      document.querySelector('#page-title').textContent = titles[page];
-      content.innerHTML = ({ alarm: alarmPage, world: worldPage, stopwatch: stopwatchPage, timer: timerPage, settings: settingsPage })[page]();
-      bottomNav.innerHTML = navItems.map(([id,label,key]) => `<button class="nav-item" data-page="${id}" ${page === id ? 'aria-current="page"' : ''}><span class="nav-key">[${key}]</span><span>${label}</span></button>`).join('');
+      if (page !== 'settings') {
+        lastMainPage = page;
+      }
+      const [title, sub, cta] = pageMeta[page];
+      document.querySelector('#page-title').textContent = title;
+      document.querySelector('#page-sub').textContent = sub;
+      renderTtyBar();
+      renderAsciiUnderlay();
+
+      content.innerHTML = ({
+        alarm: alarmsPage,
+        crontab: crontabPage,
+        world: worldPage,
+        settings: settingsPage
+      })[page]();
+
+      if (animate) {
+        content.classList.remove('view-enter');
+        void content.offsetWidth;
+        content.classList.add('view-enter');
+      }
+
+      bottomNav.innerHTML = navItems.map(([id, label, key]) => (
+        `<button class="nav-item" type="button" data-page="${id}" ${page === id ? 'aria-current="page"' : ''}><kbd>[${key}]</kbd><span>${label}</span></button>`
+      )).join('');
+
       document.querySelector('#settings-button').hidden = page === 'settings';
       backButton.hidden = page !== 'settings';
-      createButton.hidden = page === 'stopwatch' || page === 'settings';
+      createButton.hidden = !cta;
+      if (cta) {
+        createButton.textContent = cta;
+      }
       content.scrollTop = 0;
     }
+
     function navigate(page, push = true) {
-      if (push) history.pushState({ page }, '', `?page=${page}`);
-      render(page);
-    }
-    function agentFields() {
-      return `<p class="job-meta" id="agent-description">到点后，调度器会启动一次新的 Prompt 执行，不会触发手机响铃。</p>
-        <div class="field"><label for="agent-prompt">PROMPT</label><textarea class="prompt-input" id="agent-prompt" name="prompt" aria-describedby="agent-description" required>读取我本周的笔记，整理成周报草稿，并在完成后提醒我检查。</textarea></div>
-        <div class="field"><label for="agent-time">执行时间 · Asia/Shanghai</label><input class="time-input" id="agent-time" name="agentTime" type="time" value="16:00" required></div>
-        <fieldset><legend>触发计划</legend><div class="choices">${[['每天','每天'],['工作日','工作日'],['每周五','每周五']].map(([value,label], index) => `<label class="choice"><input type="radio" name="schedule" value="${value}" ${index === 0 ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div></fieldset>
-        <div class="cron-preview" aria-live="polite"><span>CRON</span><code id="cron-preview">0 16 * * *</code><span>5 fields</span></div>
-        <fieldset><legend>执行完成后</legend><div class="choices"><label class="choice"><input type="radio" name="notify" value="仅异常提醒" checked><span>仅异常提醒</span></label><label class="choice"><input type="radio" name="notify" value="完成后提醒"><span>总是提醒</span></label></div></fieldset>
-        <details class="advanced"><summary>上下文与失败策略</summary><div class="field"><label for="scope">允许读取</label><select id="scope" name="scope"><option>指定笔记</option><option>指定日历</option><option>仅当前 Prompt</option></select></div><div class="field"><label for="missed">离线或超期</label><select id="missed" name="missed"><option>恢复后补做</option><option>超期跳过</option><option>转为人工处理</option></select></div></details>`;
-    }
-    const cronExpression = PocketAgent.cronExpression;
-    function updateCronPreview() {
-      const preview = form.querySelector('#cron-preview');
-      if (!preview) return;
-      preview.textContent = cronExpression(form.querySelector('input[name="schedule"]:checked').value, form.querySelector('#agent-time').value || '16:00');
-    }
-    function openCreate(kind, editId = null, initialMode = 'self') {
-      editingAlarm = kind === 'alarm' ? editId : null;
-      const configs = {
-        alarm: ['新建闹钟', `<div class="segments"><button type="button" aria-pressed="true" data-mode="self">给自己</button><button type="button" aria-pressed="false" data-mode="agent">给 Agent</button></div><div data-self-fields><div class="field"><label for="alarm-time">触发时间</label><input class="time-input" id="alarm-time" name="time" type="time" value="07:30" required></div><fieldset><legend>重复</legend><div class="choices">${[['一次','仅一次'],['每天','每天'],['工作日','工作日']].map(([value,label], index) => `<label class="choice"><input type="radio" name="repeat" value="${value}" ${index === 0 ? 'checked' : ''}><span>${label}</span></label>`).join('')}</div></fieldset><fieldset><legend>提醒方式</legend><div class="choices"><label class="choice"><input type="radio" name="delivery" value="响铃" checked><span>响铃</span></label><label class="choice"><input type="radio" name="delivery" value="通知"><span>仅通知</span></label></div></fieldset><details class="advanced"><summary>名称与关联说明</summary><div class="field"><label for="alarm-name">名称</label><input id="alarm-name" name="title" value="闹钟"></div><p class="job-meta">日历 Event 只能从日历端或 Agent 端创建时自动关联，闹钟端不主动选择。</p></details></div><div data-agent-fields hidden>${agentFields()}</div><div class="dialog-actions"><button class="full-button" type="submit" data-submit>保存闹钟</button></div>`],
-        world: ['添加城市', `<div class="field"><label for="city">城市</label><select id="city" name="city"><option value="Paris|Europe/Paris">巴黎</option><option value="Tokyo|Asia/Tokyo">东京</option><option value="Singapore|Asia/Singapore">新加坡</option><option value="Los Angeles|America/Los_Angeles">洛杉矶</option></select></div><div class="dialog-actions"><button class="full-button" type="submit">添加城市</button></div>`],
-        timer: ['新建计时器', `<div class="field"><label for="minutes">时长（分钟）</label><input class="time-input" id="minutes" name="minutes" type="number" value="15" min="1" max="999" required></div><div class="dialog-actions"><button class="full-button" type="submit">开始计时</button></div>`],
-        agent: ['新建 Agent Cron Job', `${agentFields()}<div class="dialog-actions"><button class="full-button" type="submit">保存 Cron Job</button></div>`]
-      };
-      const [title, markup] = configs[kind];
-      form.dataset.kind = kind;
-      document.querySelector('#dialog-title').textContent = editingAlarm ? '编辑闹钟' : title;
-      form.innerHTML = markup;
-      if (editingAlarm) {
-        const item = alarms.find((alarm) => alarm.id === editingAlarm);
-        if (item) {
-          form.querySelector('#alarm-time').value = item.time;
-          form.querySelector('#alarm-name').value = item.title;
-          const [repeat, delivery] = item.meta.split(' · ');
-          form.querySelector(`input[name="repeat"][value="${repeat === '仅一次' ? '一次' : repeat}"]`)?.click();
-          form.querySelector(`input[name="delivery"][value="${delivery}"]`)?.click();
-        }
-        form.insertAdjacentHTML('beforeend', '<button class="text-button" type="button" id="delete-alarm" style="margin-top:14px">删除闹钟</button>');
-        form.querySelector('.segments').hidden = true;
+      if (push) {
+        history.pushState({ page }, '', `?page=${page}`);
       }
-      if (kind === 'alarm') setAlarmMode(initialMode);
-      updateCronPreview();
+      render(page, true);
+    }
+
+    function syncAlarmDateField() {
+      const dateWrap = form.querySelector('[data-once-date]');
+      if (!dateWrap) {
+        return;
+      }
+      const repeatVal = form.querySelector('input[name="repeat"]:checked')?.value || '仅一次';
+      dateWrap.hidden = repeatVal !== '仅一次';
+    }
+
+    function updatePlanPreview() {
+      const box = form.querySelector('#cli-preview');
+      if (!box) {
+        return;
+      }
+      const mode = form.dataset.planMode || 'cron';
+      const scheduleRow = form.querySelector('[data-cron-only]');
+      if (scheduleRow) {
+        scheduleRow.hidden = mode !== 'cron';
+      }
+      try {
+        const plan = PocketAgent.createAgentPlan({
+          agentId: form.querySelector('#plan-agent')?.value || '@work-agent',
+          prompt: form.querySelector('#plan-prompt')?.value || 'Prompt',
+          mode,
+          schedule: form.querySelector('input[name="schedule"]:checked')?.value || '每天',
+          time: form.querySelector('#plan-time')?.value || '16:00',
+          ttlMinutes: Number(form.querySelector('input[name="ttl"]:checked')?.value || 15),
+          missedPolicy: form.querySelector('input[name="missed"]:checked')?.value || 'skip'
+        });
+        box.innerHTML = `<b>$</b> ${escapeHtml(PocketAgent.formatPlanCommand(plan))}`;
+      } catch (err) {
+        box.textContent = `$ invalid: ${err.message}`;
+      }
+    }
+
+    function openDialog(kind, editId = null) {
+      editingAlarm = kind === 'alarm' ? editId : null;
+      editingPlan = kind === 'plan' ? editId : null;
+      form.dataset.kind = kind;
+      if (kind === 'alarm') {
+        const existing = editingAlarm ? alarms.find((a) => a.id === editingAlarm) : null;
+        document.querySelector('#dialog-title').textContent = existing ? '编辑闹钟' : '新建闹钟';
+        const time = existing ? existing.time : '07:30';
+        const title = existing ? existing.title : '闹钟';
+        const repeat = existing ? existing.repeat : '仅一次';
+        const dateVal = existing?.date || defaultOnceDate(time);
+        const minDate = localDateIso(0);
+        const delivery = existing ? existing.delivery : '响铃';
+        const locked = existing ? existing.locked : false;
+        form.innerHTML = `
+          <div class="field"><label for="alarm-time">TIME</label><input class="time-input" id="alarm-time" name="time" type="time" value="${escapeHtml(time)}" required></div>
+          <fieldset><legend>REPEAT</legend><div class="choices">${['仅一次', '每天', '工作日'].map((r) => `<label class="choice"><input type="radio" name="repeat" value="${r}" ${r === repeat ? 'checked' : ''}><span>${r}</span></label>`).join('')}</div></fieldset>
+          <div class="field" data-once-date>
+            <label for="alarm-date">DATE · 指定响铃日期</label>
+            <div class="date-row">
+              <input class="date-input" id="alarm-date" name="date" type="date" min="${minDate}" value="${escapeHtml(dateVal)}">
+              <div class="date-shortcuts">
+                <button class="cmd-quiet outlined mini" type="button" data-date-offset="0">今天</button>
+                <button class="cmd-quiet outlined mini" type="button" data-date-offset="1">明天</button>
+                <button class="cmd-quiet outlined mini" type="button" data-date-offset="2">后天</button>
+              </div>
+            </div>
+          </div>
+          <div class="field"><label for="alarm-title">TITLE</label><input id="alarm-title" name="title" value="${escapeHtml(title)}" required></div>
+          <fieldset><legend>DELIVERY</legend><div class="choices">${['响铃', '仅通知'].map((d) => `<label class="choice"><input type="radio" name="delivery" value="${d}" ${d === delivery ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div></fieldset>
+          <label class="check-line" for="alarm-lock"><span>LOCKED · 本机锁（禁止云端或 Agent 修改）</span><input id="alarm-lock" name="locked" type="checkbox" ${locked ? 'checked' : ''}></label>
+          <button class="btn-block primary" type="submit">保存闹钟</button>
+          ${existing ? '<button class="btn-block" type="button" id="delete-alarm">删除闹钟</button>' : ''}`;
+        syncAlarmDateField();
+      } else if (kind === 'crontab' || kind === 'plan') {
+        form.dataset.kind = 'plan';
+        const existing = editingPlan ? plans.find((p) => p.id === editingPlan) : null;
+        document.querySelector('#dialog-title').textContent = existing ? '编辑 Agent 计划' : '新建 Agent 计划';
+        const mode = existing ? existing.mode : 'cron';
+        const time = existing ? existing.time : '16:00';
+        const prompt = existing ? existing.prompt : '整理本周笔记草稿，生成周五复盘清单';
+        const sched = existing ? existing.schedule : '每周五';
+        const ttl = existing ? existing.ttlMinutes : 15;
+        const missed = existing ? existing.missedPolicy : 'skip';
+        form.dataset.planMode = mode;
+        const activeAgents = agents.filter((a) => a.active);
+        const pool = activeAgents.length ? activeAgents : agents;
+        const options = pool.map((a) => `<option value="${escapeHtml(a.id)}" ${existing?.agentId === a.id ? 'selected' : ''}>${escapeHtml(a.name)} (${escapeHtml(a.id)})</option>`).join('');
+        form.innerHTML = `
+          <div class="field"><label for="plan-agent">TARGET AGENT</label><select id="plan-agent" name="agentId">${options}</select></div>
+          <div class="field"><label for="plan-prompt">PROMPT</label><textarea class="prompt-input" id="plan-prompt" name="prompt" required>${escapeHtml(prompt)}</textarea></div>
+          <div class="field"><label>TRIGGER MODE</label><div class="seg-bar"><button type="button" data-plan-mode="once" aria-pressed="${mode === 'once'}">单次时间</button><button type="button" data-plan-mode="cron" aria-pressed="${mode === 'cron'}">周期 Cron</button></div></div>
+          <div class="field"><label for="plan-time">LOCAL TIME · Asia/Shanghai</label><input class="time-input" id="plan-time" name="time" type="time" value="${escapeHtml(time)}" required></div>
+          <fieldset data-cron-only><legend>SCHEDULE</legend><div class="choices">${['每天', '工作日', '每周五'].map((s) => `<label class="choice"><input type="radio" name="schedule" value="${s}" ${s === sched ? 'checked' : ''}><span>${s}</span></label>`).join('')}</div></fieldset>
+          <fieldset><legend>WINDOW &amp; MISSED POLICY</legend><div class="choices">
+            <label class="choice"><input type="radio" name="ttl" value="15" ${ttl === 15 ? 'checked' : ''}><span>ttl=15m</span></label>
+            <label class="choice"><input type="radio" name="ttl" value="60" ${ttl === 60 ? 'checked' : ''}><span>ttl=60m</span></label>
+            <label class="choice"><input type="radio" name="missed" value="skip" ${missed === 'skip' ? 'checked' : ''}><span>missed=skip</span></label>
+            <label class="choice"><input type="radio" name="missed" value="latest" ${missed === 'latest' ? 'checked' : ''}><span>missed=latest</span></label>
+          </div></fieldset>
+          <div class="cli-preview" id="cli-preview" aria-live="polite"></div>
+          <button class="btn-block primary" type="submit">保存计划</button>
+          ${existing ? `<div class="dialog-split"><button class="btn-block" type="button" id="toggle-plan">${existing.enabled ? '暂停计划' : '恢复计划'}</button><button class="btn-block" type="button" id="delete-plan">删除计划</button></div>` : ''}`;
+        updatePlanPreview();
+      } else if (kind === 'binding') {
+        document.querySelector('#dialog-title').textContent = '新增 Agent 绑定';
+        form.innerHTML = `
+          <div class="field"><label for="bind-id">HANDLE</label><input id="bind-id" name="id" placeholder="@research-bot" required></div>
+          <div class="field"><label for="bind-name">NAME</label><input id="bind-name" name="name" placeholder="资料整理 Agent" required></div>
+          <div class="field"><label for="bind-ep">HTTPS ENDPOINT</label><input id="bind-ep" name="endpoint" type="url" value="https://" required></div>
+          <div class="field"><label for="bind-secret">CREDENTIAL (加密保存，列表不回显)</label><input id="bind-secret" name="secret" type="password" placeholder="输入调用密钥" required></div>
+          <button class="btn-block primary" type="submit">保存绑定</button>`;
+      } else if (kind === 'world') {
+        document.querySelector('#dialog-title').textContent = '添加城市';
+        form.innerHTML = `
+          <div class="field"><label for="city">CITY</label><select id="city" name="city">
+            <option value="东京|Asia/Tokyo">东京 (Asia/Tokyo)</option>
+            <option value="新加坡|Asia/Singapore">新加坡 (Asia/Singapore)</option>
+            <option value="巴黎|Europe/Paris">巴黎 (Europe/Paris)</option>
+            <option value="洛杉矶|America/Los_Angeles">洛杉矶 (America/Los_Angeles)</option>
+          </select></div>
+          <button class="btn-block primary" type="submit">添加城市</button>`;
+      }
       dialog.showModal();
+      form.querySelector('input, select, textarea')?.focus();
     }
-    function setAlarmMode(mode) {
-      form.dataset.mode = mode;
-      form.querySelectorAll('[data-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.mode === mode)));
-      form.querySelector('[data-self-fields]').hidden = mode !== 'self';
-      form.querySelector('[data-agent-fields]').hidden = mode !== 'agent';
-      form.querySelector('[data-submit]').textContent = mode === 'agent' ? '保存 Cron Job' : '保存闹钟';
-      updateCronPreview();
-    }
-    bottomNav.addEventListener('click', (event) => { const button = event.target.closest('[data-page]'); if (button) navigate(button.dataset.page); });
+
+    bottomNav.addEventListener('click', (event) => {
+      const btn = event.target.closest('[data-page]');
+      if (btn) {
+        navigate(btn.dataset.page);
+      }
+    });
+
     document.querySelector('#settings-button').addEventListener('click', () => navigate('settings'));
+    backButton.addEventListener('click', () => navigate(lastMainPage));
     document.querySelector('#theme-toggle').addEventListener('click', () => {
       document.body.dataset.theme = document.body.dataset.theme === 'black' ? 'white' : 'black';
     });
-    backButton.addEventListener('click', () => navigate('alarm'));
-    createButton.addEventListener('click', () => openCreate(current));
+    createButton.addEventListener('click', () => openDialog(current));
     document.querySelector('#dialog-close').addEventListener('click', () => dialog.close());
+
     content.addEventListener('click', (event) => {
-      const switchButton = event.target.closest('[data-switch]');
-      const editButton = event.target.closest('[data-edit]');
-      const tab = event.target.closest('[data-agent-tab]');
-      const create = event.target.closest('[data-create]');
-      const sw = event.target.closest('[data-stopwatch]');
-      const tm = event.target.closest('[data-timer]');
-      const preset = event.target.closest('[data-preset]');
-      const message = event.target.closest('[data-toast]');
-      if (switchButton) {
-        const item = alarms.find((alarm) => alarm.id === Number(switchButton.dataset.switch));
-        if (item) item.enabled = !item.enabled;
-        event.stopPropagation(); render();
-      } else if (editButton) { openCreate('alarm', Number(editButton.dataset.edit)); }
-      else if (tab) { agentTab = tab.dataset.agentTab; render(); }
-      else if (create) openCreate(create.dataset.create);
-      else if (sw) {
-        const action = sw.dataset.stopwatch;
-        if (action === 'toggle') {
-          if (stopwatch.startedAt === null) stopwatch.startedAt = performance.now();
-          else { stopwatch.elapsed = stopwatchValue(); stopwatch.startedAt = null; }
-        } else if (action === 'lap' && stopwatchValue() > 0) {
-          stopwatch.laps = [stopwatchText(stopwatchValue()), ...(stopwatch.laps || [])];
-        } else if (action === 'reset') { stopwatch.elapsed = 0; stopwatch.laps = []; }
+      const sw = event.target.closest('[data-switch]');
+      const skipBtn = event.target.closest('[data-skip]');
+      const unskipBtn = event.target.closest('[data-unskip]');
+      const edit = event.target.closest('[data-edit]');
+      const editPlan = event.target.closest('[data-edit-plan]');
+      const removeCity = event.target.closest('[data-remove-city]');
+      const openBtn = event.target.closest('[data-open]');
+      const cloudBtn = event.target.closest('[data-toggle-cloud]');
+      const agentToggle = event.target.closest('[data-toggle-agent]');
+      const toastBtn = event.target.closest('[data-toast]');
+
+      if (sw) {
+        const item = alarms.find((a) => a.id === Number(sw.dataset.switch));
+        if (item) {
+          item.enabled = !item.enabled;
+          item.skippedOnce = false;
+          if (!cloudOnline) {
+            outboxCount += 1;
+            item.state = 'OFFLINE_QUEUED';
+          } else {
+            item.state = 'EXECUTED';
+          }
+        }
         render();
-      } else if (tm) {
-        const action = tm.dataset.timer;
-        if (action === 'toggle') {
-          if (timer.endAt === null) {
-            if (timer.remaining === 0) timer.remaining = timer.duration;
-            timer.endAt = Date.now() + timer.remaining;
-          } else { timer.remaining = timerValue(); timer.endAt = null; }
-        } else { timer.endAt = null; timer.remaining = timer.duration; }
+      } else if (skipBtn) {
+        const item = alarms.find((a) => a.id === Number(skipBtn.dataset.skip));
+        if (item) {
+          item.skippedOnce = true;
+          render();
+          toast(`已跳过本次 ${item.time}，下次照常响铃`);
+        }
+      } else if (unskipBtn) {
+        const item = alarms.find((a) => a.id === Number(unskipBtn.dataset.unskip));
+        if (item) {
+          item.skippedOnce = false;
+          render();
+          toast(`已恢复 ${item.time}`);
+        }
+      } else if (edit) {
+        openDialog('alarm', Number(edit.dataset.edit));
+      } else if (editPlan) {
+        openDialog('plan', Number(editPlan.dataset.editPlan));
+      } else if (removeCity) {
+        const idx = Number(removeCity.dataset.removeCity);
+        const removed = cities.splice(idx, 1)[0];
+        render('world');
+        if (removed) {
+          toast(`已移除 ${removed[0]}`);
+        }
+      } else if (openBtn) {
+        openDialog(openBtn.dataset.open);
+      } else if (cloudBtn) {
+        cloudOnline = !cloudOnline;
+        if (cloudOnline && outboxCount > 0) {
+          outboxCount = 0;
+          alarms.forEach((a) => {
+            if (a.state === 'OFFLINE_QUEUED') {
+              a.state = 'EXECUTED';
+            }
+          });
+          toast('已重连 Cloud 并同步离线队列');
+        }
         render();
-      } else if (preset) {
-        timer.duration = timer.remaining = Number(preset.dataset.preset) * 60000;
-        timer.endAt = null; render();
-      } else if (message) toast(message.dataset.toast);
+      } else if (agentToggle) {
+        const ag = agents.find((a) => a.id === agentToggle.dataset.toggleAgent);
+        if (ag) {
+          ag.active = !ag.active;
+          render();
+        }
+      } else if (toastBtn) {
+        toast(toastBtn.dataset.toast);
+      }
     });
-    form.addEventListener('input', updateCronPreview);
-    form.addEventListener('change', updateCronPreview);
+
+    form.addEventListener('input', () => {
+      updatePlanPreview();
+      syncAlarmDateField();
+    });
+    form.addEventListener('change', () => {
+      updatePlanPreview();
+      syncAlarmDateField();
+    });
     form.addEventListener('click', (event) => {
-      const modeButton = event.target.closest('[data-mode]');
-      if (modeButton) setAlarmMode(modeButton.dataset.mode);
-      if (!event.target.closest('#delete-alarm')) return;
-      alarms = alarms.filter((alarm) => alarm.id !== editingAlarm);
-      dialog.close(); navigate('alarm'); toast('闹钟已删除');
+      const dateQuick = event.target.closest('[data-date-offset]');
+      if (dateQuick) {
+        const dateInput = form.querySelector('#alarm-date');
+        if (dateInput) {
+          dateInput.value = localDateIso(Number(dateQuick.dataset.dateOffset));
+        }
+        return;
+      }
+      const modeBtn = event.target.closest('[data-plan-mode]');
+      if (modeBtn) {
+        form.dataset.planMode = modeBtn.dataset.planMode;
+        form.querySelectorAll('[data-plan-mode]').forEach((b) => {
+          b.setAttribute('aria-pressed', String(b === modeBtn));
+        });
+        updatePlanPreview();
+        return;
+      }
+      if (event.target.closest('#delete-alarm')) {
+        alarms = alarms.filter((a) => a.id !== editingAlarm);
+        dialog.close();
+        render('alarm');
+        toast('闹钟已删除');
+        return;
+      }
+      if (event.target.closest('#toggle-plan')) {
+        const item = plans.find((p) => p.id === editingPlan);
+        if (item) {
+          item.enabled = !item.enabled;
+          if (item.enabled && item.statusKind === 'expired') {
+            item.statusKind = 'wait';
+            item.status = item.mode === 'once' ? `${item.time} 单次` : 'SCHEDULED';
+          }
+          dialog.close();
+          render('crontab');
+          toast(item.enabled ? '计划已恢复' : '计划已暂停');
+        }
+        return;
+      }
+      if (event.target.closest('#delete-plan')) {
+        plans = plans.filter((p) => p.id !== editingPlan);
+        dialog.close();
+        render('crontab');
+        toast('计划已删除');
+      }
     });
-    content.addEventListener('submit', (event) => {
-      if (event.target.id !== 'connection-form') return;
-      event.preventDefault();
-      connectionAlive = true;
-      render(); toast('已连接通讯中心');
-    });
+
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       const data = new FormData(form);
       const kind = form.dataset.kind;
-      if ((kind === 'alarm' && form.dataset.mode === 'agent') || kind === 'agent') {
-        const schedule = data.get('schedule');
-        const time = data.get('agentTime');
-        const cronJob = PocketAgent.createCronJob({ prompt: data.get('prompt'), schedule, time, notify: data.get('notify') });
-        jobs.push({ title: cronJob.prompt, meta: `SCHEDULE: ${schedule} ${time} · ${cronJob.schedule.timeZone}\nCRON: ${cronJob.cron} · ${cronJob.notify}`, status: cronJob.status });
-        dialog.close(); navigate('alarm'); toast('Cron Job 已保存，将按时启动 Prompt');
-      } else if (kind === 'alarm') {
-        if (editingAlarm) {
-          const item = alarms.find((alarm) => alarm.id === editingAlarm);
-          if (item) Object.assign(item, { time: data.get('time'), title: data.get('title') || '闹钟', meta: `${data.get('repeat')} · ${data.get('delivery')}` });
-        } else {
-          alarms.push({ id: Date.now(), time: data.get('time'), title: data.get('title') || '闹钟', meta: `${data.get('repeat')} · ${data.get('delivery')}`, enabled: true });
+
+      if (kind === 'alarm') {
+        const repeat = data.get('repeat');
+        const time = data.get('time');
+        let chosenDate = repeat === '仅一次' ? String(data.get('date') || '') : '';
+        if (repeat === '仅一次') {
+          if (!chosenDate) {
+            chosenDate = defaultOnceDate(time);
+          } else {
+            const [yy, mm, dd] = chosenDate.split('-').map(Number);
+            const [hh, min] = time.split(':').map(Number);
+            if (new Date(yy, mm - 1, dd, hh, min).getTime() <= Date.now()) {
+              chosenDate = localDateIso(1);
+            }
+          }
         }
-        dialog.close(); navigate('alarm'); toast(editingAlarm ? '修改已保存' : '闹钟已保存');
+        const locked = data.get('locked') === 'on';
+        const state = cloudOnline ? 'EXECUTED' : 'OFFLINE_QUEUED';
+        if (!cloudOnline) {
+          outboxCount += 1;
+        }
+        const payload = {
+          time,
+          date: chosenDate,
+          title: String(data.get('title') || '闹钟').trim(),
+          repeat,
+          delivery: data.get('delivery'),
+          locked,
+          skippedOnce: false,
+          target: locked ? 'local-only' : 'phone',
+          state
+        };
+        if (editingAlarm) {
+          const item = alarms.find((a) => a.id === editingAlarm);
+          if (item) {
+            Object.assign(item, payload);
+          }
+        } else {
+          alarms.push({ id: Date.now(), enabled: true, linkedEvent: false, ...payload });
+        }
+        dialog.close();
+        render('alarm');
+        toast(editingAlarm ? '闹钟修改已保存' : '闹钟已设置');
+      } else if (kind === 'plan') {
+        const mode = form.dataset.planMode || 'cron';
+        const scheduleKind = data.get('schedule') || '每天';
+        const ttlMinutes = Number(data.get('ttl') || 15);
+        const missedPolicy = data.get('missed') || 'skip';
+        const plan = PocketAgent.createAgentPlan({
+          agentId: data.get('agentId'),
+          prompt: data.get('prompt'),
+          mode,
+          schedule: scheduleKind,
+          time: data.get('time'),
+          ttlMinutes,
+          missedPolicy
+        });
+        const spec = plan.mode === 'once'
+          ? `at ${plan.runAt} · ttl=${plan.ttlMinutes}m · 附一次性回调密钥`
+          : `${plan.cron} · ${plan.schedule.kind} ${plan.schedule.time} · ttl=${plan.ttlMinutes}m · missed=${plan.missedPolicy}`;
+        const nextFields = {
+          agentId: plan.agentId,
+          prompt: plan.prompt,
+          mode: plan.mode,
+          schedule: scheduleKind,
+          time: data.get('time'),
+          ttlMinutes,
+          missedPolicy,
+          spec,
+          enabled: true,
+          status: plan.mode === 'once' ? `${plan.runAt} 单次` : 'SCHEDULED',
+          statusKind: 'wait',
+          receipt: '尚未到点，等待云端触发',
+          receiptTime: 'SCHEDULED'
+        };
+        if (editingPlan) {
+          const existing = plans.find((p) => p.id === editingPlan);
+          if (existing) {
+            Object.assign(existing, nextFields);
+          }
+        } else {
+          plans.unshift({ id: Date.now(), ...nextFields });
+        }
+        dialog.close();
+        render('crontab');
+        toast(editingPlan ? 'Agent 计划已更新' : 'Agent 计划已保存');
+      } else if (kind === 'binding') {
+        const rawId = String(data.get('id') || '').trim();
+        const id = rawId.startsWith('@') ? rawId : `@${rawId}`;
+        agents.push({
+          id,
+          name: String(data.get('name') || '').trim(),
+          endpoint: String(data.get('endpoint') || '').trim(),
+          active: true
+        });
+        dialog.close();
+        render('settings');
+        toast(`已加密保存 ${id}`);
       } else if (kind === 'world') {
-        const [name, zone] = data.get('city').split('|');
-        if (!cities.some(([city]) => city === name)) cities.push([name, zone]);
-        dialog.close(); navigate('world'); toast('城市已添加');
-      } else if (kind === 'timer') {
-        timer.duration = timer.remaining = Number(data.get('minutes')) * 60000;
-        timer.endAt = Date.now() + timer.remaining;
-        dialog.close(); navigate('timer'); toast('计时已开始');
+        const [name, zone] = String(data.get('city')).split('|');
+        if (!cities.some(([c]) => c === name)) {
+          cities.push([name, zone]);
+        }
+        dialog.close();
+        render('world');
+        toast(`已添加 ${name}`);
       }
     });
+
     document.addEventListener('keydown', (event) => {
-      if (event.target.closest('input, select, textarea, [contenteditable]') || dialog.open) return;
-      const page = { a: 'alarm', w: 'world', s: 'stopwatch', t: 'timer' }[event.key.toLowerCase()];
-      if (page) { event.preventDefault(); navigate(page); }
-      else if (event.key.toLowerCase() === 'n') { event.preventDefault(); openCreate(current); }
-      else if (event.key.toLowerCase() === 'c') { event.preventDefault(); navigate('settings'); }
-      else if (event.key.toLowerCase() === 'b') { event.preventDefault(); document.querySelector('#theme-toggle').click(); }
+      if (event.target.closest('input, select, textarea, [contenteditable]') || dialog.open) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      const targetPage = { a: 'alarm', p: 'crontab', w: 'world' }[key];
+      if (targetPage) {
+        event.preventDefault();
+        navigate(targetPage);
+      } else if (key === 'n' && !createButton.hidden) {
+        event.preventDefault();
+        createButton.click();
+      } else if (key === 'c') {
+        event.preventDefault();
+        navigate('settings');
+      } else if (key === 'b') {
+        event.preventDefault();
+        document.querySelector('#theme-toggle').click();
+      }
     });
-    window.addEventListener('popstate', (event) => render(event.state?.page || 'alarm'));
+
+    window.addEventListener('popstate', (event) => {
+      render(event.state?.page || 'alarm');
+    });
+
     setInterval(() => {
-      if (current === 'stopwatch' && stopwatch.startedAt !== null) {
-        const display = document.querySelector('#stopwatch-display');
-        if (display) display.textContent = stopwatchText(stopwatchValue());
+      if (Date.now() % 60000 < 1100) {
+        render(current);
       }
-      if (current === 'timer' && timer.endAt !== null) {
-        const display = document.querySelector('#timer-display');
-        if (display) display.textContent = timerText(timerValue());
-        if (timerValue() === 0) { timer.endAt = null; render(); toast('计时结束'); }
-      }
-      if (current === 'world' && Date.now() % 60000 < 1100) render();
-    }, 100);
+    }, 1000);
+
     const params = new URLSearchParams(location.search);
     document.body.dataset.theme = params.get('theme') === 'black' ? 'black' : 'white';
-    const initial = titles[params.get('page')] ? params.get('page') : 'alarm';
+    if (params.get('motion') === 'off') {
+      document.body.dataset.motion = 'off';
+    }
+    const initial = pageMeta[params.get('page')] ? params.get('page') : 'alarm';
     history.replaceState({ page: initial }, '', `?page=${initial}`);
     render(initial);
-    if (params.has('create')) openCreate(params.get('create') === '1' ? 'alarm' : params.get('create') === 'agent' ? 'alarm' : params.get('create'), null, params.get('create') === 'agent' ? 'agent' : 'self');
+    if (params.get('create')) {
+      openDialog(params.get('create'));
+    }
   </script>
 </body>
 </html>

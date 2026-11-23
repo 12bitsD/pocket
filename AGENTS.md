@@ -19,3 +19,7 @@ Before creating, editing, reviewing, or refactoring code, invoke the project `bi
 - Split functions only when that reduces cognitive load; `bits:explain(BCS003)` is a last resort.
 - Use `bits:allow(rule): reason` only for a concrete contract or low-confidence case. Do not add blanket suppressions or update `bits-baseline.json` merely to make a change pass.
 - Keep compiler, formatter, and real test failures as hard failures. `unsupported` is not passed; `warning` is not a hard failure.
+
+## Design standard
+
+All UI, prototype, and styling work across Clock, Calendar, Notes, and `packages/design-system` must follow [docs/design-standard.md](docs/design-standard.md). When a user review introduces new visual or interaction rules or refines existing ones, update `docs/design-standard.md` and its changelog in the same change.

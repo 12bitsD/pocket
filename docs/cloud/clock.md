@@ -2,13 +2,13 @@
 
 状态：**已对齐，2026-11-23。**
 
-Clock 包含普通闹钟、世界时钟、秒表、计时器和 Agent Alarm。普通闹钟由 Android 执行；Agent Alarm 由 Cloud 定时向 Agent EP 投递 Prompt。
+Clock 包含普通闹钟、Agent Alarm（Agent 计划）和世界时钟（低频的秒表与计时器已精简移除）。普通闹钟由 Android 执行；Agent Alarm 由 Cloud 定时向 Agent EP 投递 Prompt。
 
 ## 1. 领域对象
 
 | 对象 | 内容 |
 | --- | --- |
-| Alarm | 时间、重复、名称、提醒方式、启用状态、revision、Lock、执行目标 |
+| Alarm | 时间、可选指定日期（单次闹钟）、重复规则、名称、提醒方式、启用状态、revision、Lock、执行目标 |
 | Alarm Operation | 本地、Agent 或 Calendar 产生的创建、修改、取消操作 |
 | Alarm Target | 首选设备、允许设备、当前执行设备和目标模式 |
 | Agent Alarm | Prompt、触发计划、Agent 绑定、错过策略、启用状态 |
@@ -75,18 +75,30 @@ Calendar 后续通过 `linked_event_id` 产生相同 Alarm Operation。Event 的
 
 ## 6. Agent Alarm
 
+### Agent 绑定配置
+
+外部 Agent 的地址与调用密钥单独保存在 `agent_bindings` 中，不在每条定时计划里重复保存：
+
+- `agent_binding_id`：稳定标识（如 `@work-agent`）。
+- `name`：展示名称。
+- `agent_endpoint`：正式环境仅允许外网 `https://` 地址，禁止指向服务端内网地址（仅本地测试显式允许本机测试服务）。
+- `credential`：调用 Agent 时使用的密钥，加密存库，查询列表时不返回原文。
+
+更换密钥或停用某个 Agent 绑定时，引用该绑定的所有计划立即按新状态生效。
+
 ### 创建与触发
 
 用户在 Pocket 中编辑：
 
-- `agent_endpoint` 对应的 Agent 绑定。
-- `credential`。
-- `source`，默认为 `pocket.clock`。
-- `prompt`。
-- `run_at` 或 `cron` 与 IANA 时区。
-- `missed_policy`：`skip`（默认）、`latest`、`all`。
+- `agent_binding_id`：选择已保存的 Agent 绑定。
+- `source`：默认为 `pocket.clock`。
+- `prompt`：要投递给 Agent 的正文。
+- 触发方式与有效窗口：
+  - **单次计划**：指定 `run_at` 与具体截止时间 `expires_at`；
+  - **周期计划**：指定五段 `cron`、IANA 时区与每次触发后的相对有效时长 `ttl_seconds`（例如 15 分钟，超期标 `EXPIRED` 不再发）。
+- `missed_policy`：`skip`（默认）、`latest`、`all`（`all` 设单次补发上限，防止停机重启后一次补发过多）。
 
-Cloud 到点生成唯一 `delivery_id`，直接向 Agent EP 发送 HTTP POST。手机离线不影响触发。
+Cloud 到点生成唯一 `delivery_id`，并签发一个**仅对该次 `delivery_id` 有效的一次性回调密钥**，随后向 Agent EP 发送 HTTP POST。手机离线不影响触发。
 
 ### 投递协议
 
@@ -108,7 +120,8 @@ Content-Type: application/json
   "session_hint": {
     "mode": "new"
   },
-  "result_callback_url": "https://pocket.example.com/v1/deliveries/dlv_01XYZ/result"
+  "result_callback_url": "https://pocket.example.com/v1/deliveries/dlv_01XYZ/result",
+  "callback_token": "cbk_one_time_token"
 }
 ```
 
@@ -139,20 +152,21 @@ Pocket 收到 202 后将本次投递标记 `COMPLETED`。Agent 后续如何执�
 
 ### 重试与结果
 
-Agent 暂时不可用时按策略重试，同一 `delivery_id` 用于去重。默认不补发错过的投递；`latest` 只补最近一次，`all` 补发所有未过期投递。
+Agent 暂时不可用时按策略重试，同一 `delivery_id` 用于去重。默认不补发错过的投递；`latest` 只补最近一次，`all` 在单次上限内补发未过期投递。
 
-Agent 可通过 `result_callback_url` 可选回写摘要、Session 引用或结构化结果。Clock 有回写则展示，没有回写不影响投递完成。
+Agent 可通过 `result_callback_url` 携带本次 `callback_token`（不复用出站 `credential`）可选回写摘要、Session 引用或结构化结果。Clock 有回写则展示，没有回写不影响投递完成。
 
 ## 7. Clock 客户端 Feature
 
+- 底部单层三栏导航（`闹钟`、`Agent 计划`、`世界时钟`），无二级嵌套 Tab；视觉与交互遵循 [Pocket 设计标准](../design-standard.md)。
 - Alarm 本地数据库和离线 outbox。
-- Android 闹钟、通知、重启恢复和实际执行回执。
-- 单条 Alarm 的 `cloud_locked` 控制。
+- Android 闹钟、通知、重启恢复和实际执行回执（`EXECUTED`）。
+- 单条 Alarm 的 `cloud_locked`（本机锁）控制。
 - 首选设备、指定设备和当前执行状态展示。
-- Agent Alarm 的 Prompt 与计划编辑。
-- 投递状态、可选结果和来源展示。
+- Agent 绑定管理（不回显密钥原文）以及单次／周期 Agent 计划编辑。
+- 投递状态（`SCHEDULED` / `202 COMPLETED` / `EXPIRED`）、可选回传结果和来源展示。
 
-普通闹钟、秒表、计时器和世界时钟共享同一界面语言，但只有普通闹钟使用 Cloud Alarm 同步语义。
+普通闹钟、Agent 计划和世界时钟共享同一界面语言，其中普通闹钟使用 Cloud Alarm 设备同步语义，Agent 计划使用 Cloud Scheduler 投递语义。
 
 ## 8. 验收场景
 

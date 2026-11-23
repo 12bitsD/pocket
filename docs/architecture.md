@@ -33,7 +33,7 @@ Agent 独立负责接收 Prompt、创建 Run、管理 Session 和展示结果。
 | 对象 | 核心职责 |
 | --- | --- |
 | Pocket Cloud | User ID、权限、Link、数据同步、定时触发、操作记录、Agent 投递 |
-| Clock App | 闹钟、世界时钟、秒表、计时器、本地执行、Lock、离线 outbox |
+| Clock App | 闹钟、Agent 计划入口、世界时钟、本地执行、Lock、离线 outbox |
 | Calendar App | Event、提醒策略、与 Clock 的提醒关联 |
 | Notes App | 笔记内容、版本、同步范围和访问授权 |
 | External Agent | 接收 Prompt、创建 Run、管理 Session、处理并可选回写结果 |

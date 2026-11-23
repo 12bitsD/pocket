@@ -6,17 +6,17 @@ Pocket targets general Android. ColorOS receives deep optimizations for backgrou
 
 ## Status
 
-- **Clock**: interactive HTML prototype with alarms, world clock, stopwatch, timer, and Agent Cron Job creation.
-- **Agent Core**: tested Prompt + local-time schedule → five-field Cron contract.
+- **Clock**: interactive HTML prototype with alarms (per-alarm local lock, target device, and execution state), Agent plans (one-off and five-field Cron schedules bound to configured Agents), and world clock.
+- **Agent Core**: tested Prompt + one-off / local-time Cron plan contract.
 - **Calendar / Notes**: scoped and registered in the monorepo; implementation has not started.
 
-The aligned design is organized into the [Pocket architecture](docs/architecture.md), the shared [Cloud architecture](docs/cloud/architecture.md), and the [Clock domain architecture](docs/cloud/clock.md). Current implementation remains the interactive Clock prototype; Android and live Cloud integration have not started.
+The aligned design is organized into the [Pocket architecture](docs/architecture.md), the shared [Cloud architecture](docs/cloud/architecture.md), the [Clock domain architecture](docs/cloud/clock.md), and the evolving [Pocket design standard](docs/design-standard.md). Current implementation remains the interactive Clock prototype; Android and live Cloud integration have not started.
 
 ## Layout
 
 ```text
 apps/
-  clock/          Alarm, world clock, stopwatch, timer
+  clock/          Alarms, Agent plans, and world clock
   calendar/       Calendar product scope and future app
   notes/          Notes product scope and future app
 packages/
