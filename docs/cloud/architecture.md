@@ -2,184 +2,101 @@
 
 状态：**已对齐，2026-11-23。**
 
-Pocket Cloud 是三个独立 Android App 和外部 Agent 共用的后端。首版采用模块化单体：一个 HTTP/WebSocket 服务、一个后台 Worker、一个关系数据库。领域在代码与数据上隔离，共享基础设施保持简单。
+Pocket Cloud 是三个独立 Android App、电脑 Web 工作台和外部 Agent 共用的自托管后端。采用模块化单体：一个 Python FastAPI 服务（含 HTTP RPC、WebSocket Link 与静态 Web 工作台托管）、一个后台任务循环、一个 PostgreSQL 数据库，**不引入 Redis、独立消息队列或 APScheduler**。
 
 ## 1. 模块结构
 
 ```text
-Agent / Android Apps
-        │ HTTP/JSON
-        ▼
-HTTP Interface：Schema / Permission / Idempotency
-        │
-        ├── Clock Domain
-        ├── Calendar Domain
-        └── Notes Domain
-        │
-        ▼
-Snapshot + Revision + Operations + Persistent Outbox
-        │
-        ├── Link Gateway：WebSocket push / reconnect
-        ├── Scheduler：单次与周期触发
-        └── Prompt Delivery：Agent EP / 202 / result callback
-        │
-        ▼
-Relational DB + Background Worker
+Web 工作台 / Android Apps / External Agent
+                  │ HTTP JSON & WebSocket
+                  ▼
+    HTTP & WS Interface：Schema / Bearer Auth / Idempotency
+                  │
+        ┌─────────┼─────────┐
+        ▼         ▼         ▼
+   Clock 领域  Calendar 领域  Notes 领域
+        └─────────┼─────────┘
+                  ▼
+  PostgreSQL（领域表 + operations + schedules + deliveries + idempotency_keys）
+                  │
+        ┌─────────┴─────────┐
+        ▼                   ▼
+   Link Gateway       Asyncio Worker：先短事务标记租约，再事务外 HTTP POST
 ```
 
-HTTP Interface 只做协议、权限和同步响应，不伪造客户端或 Agent 的执行结果。领域模块负责自己的业务不变量；Sync、Scheduler 和 Delivery 通过明确接口交接。
+接口服务与后台任务循环在代码上解耦，默认可在同一容器进程内通过生命周期一起启动，后续也可拆分为独立进程。
 
-## 2. 后端模块
-
-| 模块 | 职责 |
-| --- | --- |
-| HTTP Interface | 命名 RPC、JSON Schema、同步读取、幂等键、统一错误 |
-| Identity & Permission | User ID、设备、Agent 绑定、Link、动作与资源授权 |
-| Link Gateway | 连接注册、心跳、WebSocket 推送、断线握手 |
-| Sync | `server_seq`、revision、操作日志、outbox、回执和补发 |
-| Domain Modules | 各领域快照、业务规则、领域间关联 |
-| Scheduler | 保存计划、计算下次触发、生成单次投递或领域动作 |
-| Prompt Delivery | Agent EP、凭证、订阅源、重试、202 接收确认 |
-| Result Receiver | 可选结果、摘要、Session 引用和结构化回写 |
-| Observation | 操作来源、因果链、延迟、失败与过期记录 |
-
-后台 Worker 从持久存储读取待触发计划和待投递操作。数据库提交与 outbox 写入在同一个事务中完成，避免数据已变更但异步动作丢失。
-
-## 3. 数据分组
+## 2. 数据分组
 
 | 数据组 | 主要对象 | 用途 |
 | --- | --- | --- |
-| Identity | users、devices、agents、links、grants | 身份、绑定和授权 |
-| Sync | operations、receipts、outbox | 顺序、去重、补发和回执 |
-| Clock | alarms、alarm_targets | 闹钟快照与执行目标 |
-| Calendar | events、reminder_links | Event 与提醒关联 |
-| Notes | notes、note_revisions | 内容版本和授权范围 |
-| Schedule | schedules、deliveries | 触发计划与每次投递 |
-| Result | delivery_results | 可选 Agent 回写与外部引用 |
+| Identity & Pairing | `users`, `devices`, `pairing_codes`, `agent_bindings`, `links`, `grants` | 初始密钥、6 位配对码、设备独立凭证、Agent 加密配置与动作权限 |
+| Idempotency & Sync | `idempotency_keys`, `operations`, `receipts`, `outbox` | 防重复提交、`server_seq` 顺序、断点补发与回执 |
+| Clock | `alarms`, `alarm_targets` | 普通闹钟快照、本机锁与目标设备策略 |
+| Calendar / Notes | `events`, `reminder_links`, `notes`, `note_revisions` | 后续领域快照与细粒度授权范围 |
+| Schedule & Delivery | `schedules`, `deliveries`, `delivery_results` | 单次/周期计划、每次触发投递、一次性回调密钥与回传摘要 |
 
-各领域使用自己的业务表。`operations` 只承载共同同步语义，不替代领域数据结构。
+**事务与预留规则**：业务表变更与 `outbox` / 待触发记录写入必须在同一数据库事务中提交；第一期给 `schedules` 预留 `revision` 与 `deleted_at` 字段，以便第二期无缝接入客户端同步。
 
-## 4. HTTP 能力契约
+## 3. 接口路由与防重复提交契约
 
-当前能力按领域命名：
+### 路由划分
 
-```text
-device.status / operation.get
-alarm.list / alarm.set / alarm.cancel
-agent_alarm.list / agent_alarm.set / agent_alarm.cancel
-delivery.get / delivery.result.write
-```
+- **业务能力统一走具名 RPC**：`POST /v1/rpc/{method}`
+  - 身份与设备：`pairing.create`, `pairing.claim`, `device.list`, `device.revoke`, `device.status`
+  - Agent 绑定：`agent_binding.set`, `agent_binding.list`, `agent_binding.revoke`
+  - 普通闹钟：`alarm.list`, `alarm.set`, `alarm.cancel`, `operation.get`
+  - Agent 计划：`agent_alarm.list`, `agent_alarm.set`, `agent_alarm.cancel`, `delivery.get`
+- **基础与外部端点走普通路径**：
+  - `GET /healthz`：健康与数据库探活
+  - `POST /v1/deliveries/{delivery_id}/result`：外部 Agent 携带一次性回调密钥回传执行摘要
+  - `GET /v1/link`：客户端出站 WebSocket 连接
 
-后续领域沿用同一风格注册 `event.*`、`note.*`。读操作直接返回 Cloud 当前快照；设备写操作返回 `202 ACCEPTED + operation_id`；Agent 投递返回 `delivery_id`。
+### 统一返回与幂等规则
 
-写请求共同包含：
+- 成功与失败统一返回带 `correlation_id` 的 JSON 结构；失败直接返回对应 HTTP 状态码（`400/401/403/404/409/422`）和明确错误码。
+- 写请求共同包含 `request_id`、`user_id`、`base_revision`、`source`（`local | web | agent | calendar`）、`expires_at`（单次计划）和 `correlation_id`。
+- **幂等判定**：
+  - 同一用户、同一方法、同一 `request_id` 重复提交：请求体哈希一致时直接返回首次结果；**请求体不一致返回 `409` 冲突拒绝**。
+  - 首次请求若因参数校验失败或无权限直接被拒，不写入 `idempotency_keys`，修正参数后可正常提交。
 
-- `request_id`：同一 User 下的幂等键。
-- `user_id`：账户标识。
-- `base_revision`：调用方看到的实体版本。
-- `source`：`local`、`agent`、`calendar`。
-- `expires_at`：允许执行或投递的截止时间。
-- `correlation_id`：跨模块关联同一业务链。
+## 4. Agent 绑定与安全边界
 
-## 5. Link 与双向同步
+- **Agent 配置独立存储**：外部 Agent 的网址与调用密钥单独保存在 `agent_bindings`，定时计划仅引用 `agent_binding_id`；更换密钥或停用绑定时一处生效。
+- **调用密钥加密不回显**：调用外部 Agent 的密钥使用服务端主密钥对称加密存库，`list` 接口永不返回密钥原文。
+- **一次性回调密钥**：每次触发生成 `delivery_id` 时，单独生成仅对该次投递有效的 `callback_token`（库中存哈希），Agent 回传结果时只校验该回调密钥，不复用调用密钥。
+- **发送地址限制**：正式环境仅允许向合法外网 `https://` 地址发起 POST，拒绝请求服务端所在内网与元数据地址；仅本地测试配置显式开启时允许指向本机测试服务。
 
-### 长期逻辑 Link
+## 5. 定时触发、重试与防崩溃机制
 
-客户端通过出站 WebSocket 连接 Cloud。`link_id` 是稳定关系，`connection_id` 是一次临时连接；重连不改变 Link 身份。
+- **先短事务标记，再发外部请求**：
+  1. Worker 用短事务（`SELECT ... FOR UPDATE SKIP LOCKED`）捞取到期任务，标记为发送中并写入 **30 秒超时租约**，立即提交事务释放数据库连接（避免等待外部响应占住连接池）；
+  2. 事务外通过 `httpx` 向 Agent EP 发送 POST；
+  3. 收到 `202 Accepted` 记为 `COMPLETED`；网络错误或 5xx 按退避间隔重试，**重试复用同一个 `delivery_id`** 供 Agent 端去重；
+  4. 若发请求中途进程崩溃，30 秒租约到期后自动被下一轮扫描重新接管。
+- **单次与周期过期语义**：单次计划使用具体截止时间 `expires_at`；周期 `cron` 计划使用每次触发后的相对有效时长（如 `ttl_seconds = 900`），超过有效期标记 `EXPIRED` 停止发送。
+- **错过补发上限**：`missed_policy` 默认 `skip`；选 `latest` 只补最近一次；选 `all` 时设单次最大补发条数（如 10 条），防止服务停机过久重启后瞬间突发大量请求。
 
-```text
-Client → HELLO { user_id, link_id, device_id, last_applied_seq }
-Cloud  → WELCOME { connection_id, current_server_seq }
-```
+## 6. Link 与双向同步（第二期接入）
 
-在线时 Cloud 主动推送操作。断线后客户端提供 `last_applied_seq`，Cloud 补发后续操作，再恢复实时推送。心跳只维护连接状态，不承担业务轮询。
+- 客户端通过出站 WebSocket 连接 `GET /v1/link`；`link_id` 代表长期设备绑定关系，`connection_id` 代表单次连接。
+- 断线重连握手：`HELLO { user_id, link_id, device_id, last_applied_seq } → WELCOME { connection_id, current_server_seq }`，按 `last_applied_seq` 补发缺失操作后恢复实时推送。
+- Cloud 使用全局递增 `server_seq` 排序，不使用设备本地时间做 LWW；通过 `base_revision` 检测过期写，删除采用带 revision 的 tombstone 防旧更新复活。
 
-### 数据职责
-
-Cloud 保存当前期望快照和有序操作；客户端保存本地执行快照、离线 outbox 和原生执行状态。
-
-```text
-Local / Agent / Calendar
-→ Operation
-→ Cloud server_seq
-→ Client local transaction
-→ Native execution
-→ Receipt
-```
-
-重复 `operation_id` 只应用一次。删除使用带 revision 的 tombstone，防止旧更新复活对象。
-
-### 冲突
-
-Cloud 分配操作顺序，不使用设备时间做 Last-Write-Wins。`base_revision` 用于识别过期写入；领域可以定义更具体的保护规则，例如 Clock 的 Lock。
-
-## 6. 操作与执行状态
+## 7. 操作与投递状态
 
 ```text
 ACCEPTED       Cloud 已持久化请求
-OFFLINE_QUEUED 等待可用 Link
-DELIVERED      已推送到客户端或 Agent
-APPLIED        客户端领域数据库已提交
-EXECUTED       Android 已确认实际效果
-COMPLETED      本次定时投递已被 Agent 接收
-CONFLICT       revision 已过期
-REJECTED       权限或参数拒绝
-FAILED         客户端、投递或外部执行失败
-MISSED         超过动作执行时间
-EXPIRED        超过允许投递时间
+OFFLINE_QUEUED 等待目标设备连接
+DELIVERED      已推送到目标客户端
+APPLIED        客户端本地数据库已提交
+EXECUTED       Android 原生层已确认闹钟设置生效
+COMPLETED      本次定时 Prompt 已被外部 Agent 202 接收
+CONFLICT       revision 过期或幂等参数冲突
+REJECTED       权限不足或地址/参数被拒绝
+FAILED         客户端原生执行失败或投递最终失败
+MISSED         超过设备闹钟触发时间（不补响）
+EXPIRED        超过允许投递的有效窗口
 ```
 
-`ACCEPTED` 不代表设备成功；`DELIVERED` 不代表客户端已应用；`COMPLETED` 不代表 Agent 已执行完 Prompt。状态必须沿真实回执推进。
-
-## 7. Scheduler 与 Prompt Delivery
-
-### 定时计划
-
-`schedule` 保存 `run_at` 或 `cron`、IANA 时区、payload、目标绑定和 `missed_policy`。Cloud 到点生成唯一 `delivery_id`，周期计划的每次触发都是独立投递。
-
-默认错过不补发；用户可选择 `latest` 或 `all`。超过 `expires_at` 的投递只保留状态，不再发出。
-
-### Agent 投递
-
-绑定配置包含：
-
-- `agent_endpoint`
-- `credential`
-- `source`
-- `session_hint`
-- `result_callback_url`
-
-Pocket 使用 HTTP POST 投递完整 Prompt。Agent 持久化或排队后返回 `202 Accepted`，Pocket 将本次投递标记为 `COMPLETED`。同一 `delivery_id` 的重试必须保持幂等。
-
-可选结果回写包含 `delivery_id`、摘要、外部 Session 引用、结构化结果和记录时间。结果回写不改变本次投递已经完成的事实。
-
-## 8. 权限模型
-
-权限由调用主体、User ID、Link 或 Agent、动作、资源范围、有效期和撤销状态组成。当前动作包括：
-
-```text
-alarm.write / alarm.read
-agent_alarm.write / agent_alarm.read
-delivery.write / delivery.result.write
-```
-
-各领域新增自己的动作。Cloud 在接收请求时检查权限，客户端在应用操作前检查目标与 revision，Agent 在接收投递时验证凭证和 `delivery_id`。
-
-## 9. 可靠性与恢复
-
-- Cloud 重启后从数据库恢复计划、操作和 outbox。
-- 客户端重启后从本地数据库恢复未来动作与 outbox。
-- Agent 暂时不可用时按投递策略重试，超过期限标记 `EXPIRED`。
-- 同一 `request_id`、`operation_id` 或 `delivery_id` 重复提交返回首次结果。
-- 原生执行失败保留 Cloud 期望状态并记录 `FAILED`，不伪造回滚成功。
-- 跨模块流程通过 `correlation_id` 关联，不把不同步骤压成一个 `success`。
-
-## 10. 领域接入顺序
-
-1. 定义领域数据、权限动作和正常／异常场景。
-2. 实现领域模块与 HTTP 能力。
-3. 接入 operations、outbox、receipts 和 Link。
-4. 在独立 Android App 中实现本地存储与 Operation Applier。
-5. 验收重复、离线、过期、撤销和恢复路径。
-
-当前实现范围见 [Clock 领域架构](clock.md)。
+每一步状态均由真实回执推进，不把受理当作设备已执行或 Agent 已跑完。

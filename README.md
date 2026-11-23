@@ -1,16 +1,17 @@
 # Pocket
 
-Agent-native clock, calendar, and notes for Android. **These are three separate apps, not one super-app.** Each has its own UI, package, version, and release; the monorepo only shares the backend contracts, authorization model, Prompt jobs, and visual language.
+Self-hosted, Agent-native clock, calendar, and notes. **On Android, these are three separate apps, not one super-app**—each has its own UI entry, package, version, and release. **On desktop, a unified Web workspace** lets you manage alarms, Agent plans, calendar events, notes, and device/Agent bindings in one place while keeping device ringing strictly on the Android Clock app.
 
-Pocket targets general Android. ColorOS receives deep optimizations for background execution, autostart, battery policies, and permission guidance without restricting the other apps or devices to OPPO.
+Pocket targets general Android (packaged with shared Web UI + thin Kotlin native plugins for exact alarms, lock-screen ringing, boot recovery, and native SQLite storage), with deep ColorOS guidance for background execution and autostart.
 
 ## Status
 
-- **Clock**: interactive HTML prototype with alarms (per-alarm local lock, target device, and execution state), Agent plans (one-off and five-field Cron schedules bound to configured Agents), and world clock.
+- **Clock**: interactive HTML prototype with alarms (optional one-off date, per-alarm local lock, skip-next, target device, and execution state), Agent plans (one-off and five-field Cron schedules bound to configured Agents), and world clock.
 - **Agent Core**: tested Prompt + one-off / local-time Cron plan contract.
+- **Pocket Cloud & Web Workspace**: architecture and Python 3.12 + FastAPI + PostgreSQL stack finalized; implementation starts with Slice 1.
 - **Calendar / Notes**: scoped and registered in the monorepo; implementation has not started.
 
-The aligned design is organized into the [Pocket architecture](docs/architecture.md), the shared [Cloud architecture](docs/cloud/architecture.md), the [Clock domain architecture](docs/cloud/clock.md), and the evolving [Pocket design standard](docs/design-standard.md). Current implementation remains the interactive Clock prototype; Android and live Cloud integration have not started.
+The aligned design is organized into the [Pocket architecture](docs/architecture.md), the shared [Cloud architecture](docs/cloud/architecture.md), the [Clock domain architecture](docs/cloud/clock.md), the evolving [Pocket design standard](docs/design-standard.md), and the finalized [backend & client technology stack](docs/research/backend-tech-stack.md).
 
 ## Layout
 

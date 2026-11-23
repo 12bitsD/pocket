@@ -2,97 +2,83 @@
 
 状态：**已对齐，2026-11-23。**
 
-Pocket 由三个独立 Android App、一个共享 Cloud，以及外部 Agent 的接入契约组成。本文只描述系统级职责和关系；Cloud 内部设计见 [Cloud 架构](cloud/architecture.md)，各领域设计见对应领域文档。
+Pocket 面向个人自托管优先场景，由**手机端三个独立 Android App**、**电脑端一个统一 Web 工作台**、**共享 Pocket Cloud**，以及**外部 Agent 接入契约**组成。本文描述系统级形态、职责和主流程；Cloud 内部设计见 [Cloud 架构](cloud/architecture.md)，Clock 领域设计见 [Clock 领域架构](cloud/clock.md)，界面规范见 [Pocket 设计标准](design-standard.md)。
 
-## 1. 系统结构
+## 1. 系统结构与产品形态
 
 ```text
-                    ┌──────────────────────────┐
-                    │       External Agent     │
-                    │  Prompt / Run / Session  │
-                    └────────────▲─────────────┘
-                                 │ HTTP Prompt Delivery
-                                 │
-┌────────────────────────────────┴────────────────────────────────┐
-│                         Pocket Cloud                            │
-│  Identity / Permission / Link / Sync / Scheduler / Delivery     │
-└───────────────▲────────────────▲────────────────▲───────────────┘
-                │                │                │
-       ┌────────┴────────┐  ┌────┴──────────┐  ┌──┴─────────┐
-       │    Clock App    │  │ Calendar App  │  │ Notes App  │
-       │ Android + Clock │  │ Android+Event │  │ Android+MD │
-       └─────────────────┘  └───────────────┘  └────────────┘
+                        ┌──────────────────────────┐
+                        │       External Agent     │
+                        │  Prompt / Run / Session  │
+                        └──────▲────────────┬──────┘
+          HTTP Prompt Delivery │            │ 受限 Token 拉取授权笔记/日程
+                               │            ▼
+┌──────────────────────────────┴────────────┴──────────────────────────┐
+│                     Pocket Cloud (Docker 自托管)                      │
+│   Identity / Pairing / Link / Sync / Scheduler / Delivery / Web UI   │
+└────────▲─────────────────▲──────────────────▲────────────────▲───────┘
+         │                 │                  │                │
+  ┌──────┴───────┐  ┌──────┴───────┐  ┌───────┴──────┐  ┌──────┴─────────┐
+  │  Clock App   │  │ Calendar App │  │  Notes App   │  │  Web 工作台     │
+  │ Android 独立 │  │ Android 独立 │  │ Android 独立 │  │ 电脑统一管理端  │
+  └──────────────┘  └──────────────┘  └──────────────┘  └────────────────┘
 ```
 
-三个 App 各自拥有 UI、Android 包名、本地数据、原生能力、版本和 release。Cloud 提供共享后端能力，不把三个 App 合并为一个客户端。
-
-Agent 独立负责接收 Prompt、创建 Run、管理 Session 和展示结果。Pocket 通过绑定的 Agent EP 投递内容，不介入 Agent 的运行过程。
+- **手机端拆开做减法**：Clock、Calendar、Notes 是三个独立 Android App（各自独立图标、包名、版本号与 GitHub Release），日常在手机上点开 Clock 只做闹钟相关操作，不被笔记和日程稀释。
+- **电脑端合起来提效率**：提供 1 个统一的 Web 工作台（可由 `pocket-cloud` 同源托管），集中完成配 Agent、写长段 Prompt 计划、写 Markdown 笔记、排日程和远程给手机设闹钟。**Web 工作台本身不响铃**，普通闹钟同步给手机 Clock App 执行并等待手机返回真实 `EXECUTED`。
+- **客户端实现路线**：界面与交互统一复用 Web 模块与 `packages/design-system`；手机端通过 **Capacitor + Kotlin 薄层原生插件** 打包运行——其中手机端权威闹钟表与离线 `outbox` 直接落在 Android 原生本地 SQLite 中，精确闹钟（`AlarmManager`）、锁屏全屏响铃、开机广播恢复和 ColorOS 权限跳转由 Kotlin 原生层负责，不依赖浏览器缓存存活。
 
 ## 2. 职责划分
 
 | 对象 | 核心职责 |
 | --- | --- |
-| Pocket Cloud | User ID、权限、Link、数据同步、定时触发、操作记录、Agent 投递 |
-| Clock App | 闹钟、Agent 计划入口、世界时钟、本地执行、Lock、离线 outbox |
-| Calendar App | Event、提醒策略、与 Clock 的提醒关联 |
-| Notes App | 笔记内容、版本、同步范围和访问授权 |
-| External Agent | 接收 Prompt、创建 Run、管理 Session、处理并可选回写结果 |
+| Pocket Cloud | 账号与配对、设备独立凭证、Link、数据同步、定时触发、Agent 投递、托管电脑 Web 工作台 |
+| Web 工作台 | 电脑端统一编辑与查看闹钟、Agent 计划、日历、笔记、设备列表和 Agent 绑定（不直接响铃） |
+| Clock App (Android) | 闹钟、Agent 计划入口、世界时钟、Kotlin 原生响铃与重启恢复、本机锁（Lock）、原生 SQLite 离线 outbox |
+| Calendar App (Android) | Event、提醒策略、与 Clock 的提醒关联 |
+| Notes App (Android) | Markdown 笔记、版本同步、按条目给 Agent 开放读取授权 |
+| External Agent | 接收定时 Prompt、创建 Run、管理 Session、可选回传结果摘要，按需凭受限密钥拉取已授权笔记或日程 |
 
-各领域的表和业务规则由对应模块拥有。共享权限和操作协议不改变数据所有权。
+各领域的表和业务规则由对应模块拥有；所有核心表保留 `user_id` 字段，首版按个人 Docker Compose 一键自托管运行，后续扩展多用户无需重构表结构。
 
-## 3. 两条主流程
+## 3. 免注册登录与多端配对
 
-### 普通设备动作
+- **首台设备初始化**：Pocket Cloud 首次启动生成初始主密钥，用于登录电脑 Web 工作台。
+- **短时配对码绑定新设备**：在已登录端点击「添加设备」生成 5 分钟有效的 **6 位配对码（或二维码）**；手机 App 输入该配对码后，自动换取该台手机专属的长期设备 Token 并绑定 `device_id` 与 `link_id`。
+- **按设备独立吊销**：每台手机与浏览器拥有独立凭证；更换或遗失设备时，可在 Web 工作台单独吊销对应设备，不影响其他端。
+
+## 4. 两条主流程与 Agent 数据边界
+
+### 普通设备动作（设备响铃）
 
 ```text
-本地／Agent／Calendar 入口
-→ Pocket Cloud 同步操作
-→ 对应 Android App 应用并执行
-→ Cloud 记录真实执行结果
+手机本地 ／ 电脑 Web 工作台 ／ Agent ／ Calendar 入口
+→ Pocket Cloud 持久化并同步操作
+→ 目标手机 Clock App 原生层落库并写入系统闹钟
+→ Cloud 记录真实 EXECUTED / FAILED 回执
 ```
 
-Cloud 受理与 Android 执行分开。普通闹钟只有 Clock App 返回 `EXECUTED` 才算设备设置成功。
+Cloud 受理（`ACCEPTED`）与手机原生执行（`EXECUTED`）严格分开。
 
-### Agent Alarm
+### Agent 计划（云端定时投递 Prompt）
 
 ```text
-用户在 Pocket 编辑 Prompt 与触发计划
-→ Cloud 到点生成投递
-→ POST 到绑定的 Agent EP
+用户在 Web 工作台或手机编辑 Prompt 与单次/周期计划（引用已保存的 Agent 绑定）
+→ Cloud 到点生成唯一 delivery_id 与一次性回调密钥
+→ HTTP POST 到绑定的 Agent EP
 → Agent 接收并返回 202 Accepted
-→ Pocket 将本次投递标记完成
+→ Pocket 将本次投递标记 COMPLETED（可选通过回调密钥回传摘要）
 ```
 
-手机是编辑入口，云端触发不依赖手机在线。`202 Accepted` 表示 Agent 已接收并持久化或排队，不代表 Prompt 已处理完。
+手机和电脑只是编辑入口，云端触发不依赖客户端在线。
 
-Agent 可通过 `result_callback_url` 可选回写结果；结果也可以只出现在 Agent 自己的 Session 中。
+### Agent 读取笔记与日程（按需拉取）
 
-## 4. Cloud 共享能力
+后续接入 Notes 与 Calendar 时，用户在工作台为指定 Agent 勾选允许访问的笔记范围或日历读取权限，签发受限密钥供 Agent 调用 `note.read` / `event.list`；未授权内容不可读取，Pocket 仍不介入 Agent 内部运行过程。
 
-- **Identity & Permission**：随机 User ID、设备、Link、动作与资源权限。
-- **Link**：客户端主动建立 WebSocket，心跳、重连和在线状态。
-- **Sync**：当前快照、操作日志、持久 outbox、revision 和断点补同步。
-- **Scheduler**：保存并触发单次或周期计划，云端是定时触发权威。
-- **Prompt Delivery**：绑定 Agent EP、凭证、订阅源、投递和可选结果回写。
-- **Operation Record**：来源、幂等、因果链、客户端回执和投递状态。
+## 5. 分阶段落地路线
 
-这些能力通过稳定的领域接口向 Clock、Calendar、Notes 复用。
-
-## 5. 领域扩展方式
-
-新增领域时，依次增加：
-
-1. 领域数据与业务规则。
-2. 该领域的 HTTP 能力和权限动作。
-3. 对应的独立 Android App 与本地执行适配。
-4. 与共享 Sync、Link、Scheduler 的接入。
-5. 端到端验收场景。
-
-当前首先完成 [Clock 领域架构](cloud/clock.md)。Calendar 和 Notes 后续分别新增领域文档，不改变本页的系统结构。
-
-## 6. 文档层级
-
-- [Pocket 总体架构](architecture.md)：系统对象、职责、主流程和扩展方式。
-- [Cloud 架构](cloud/architecture.md)：共享后端模块、数据、同步、权限、调度与投递。
-- [Clock 领域架构](cloud/clock.md)：普通闹钟、Lock、多设备、Agent Alarm 和客户端行为。
-- [发布规则](releases.md)：各 App 独立版本与 GitHub Release。
+1. **Step 1（Cloud 第一期）**：搭建 Python 3.12 + FastAPI + PostgreSQL 后端，跑通初始密钥鉴权、Agent 绑定加密管理、单次/周期 Agent 计划调度、投递重试与回调回执闭环。
+2. **Step 2（电脑 Web 工作台首版）**：将已定稿的 Clock 界面接入真实 Cloud 接口，先在电脑浏览器端跑通真实日常使用。
+3. **Step 3（Cloud 第二期 + Clock Android 客户端）**：补齐 6 位配对码、WebSocket Link 断线补发、普通闹钟同步与本机锁冲突处理，并用 Capacitor + Kotlin 原生闹钟插件打出首个 Android 安装包上真机验收。
+4. **Step 4（Calendar & Notes 扩展）**：沿同一模块结构新增日历与笔记领域表、Web 工作台分栏与独立 Android App。
