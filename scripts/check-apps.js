@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const apps = ['clock', 'calendar'];
+const apps = ['calendar'];
 const scriptPattern = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g;
 
 for (const app of apps) {

@@ -937,6 +937,30 @@ legend { margin-block-end: 5px; }
   border-color: var(--ink);
   background: var(--ink);
 }
+.todo-switch {
+  margin-block-start: 2px;
+  min-inline-size: 34px;
+  block-size: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--ink-2);
+  border-radius: 2px;
+  background: var(--card);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.todo-switch[aria-pressed="true"] {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+}
+.todo-row.paused .todo-body-btn { opacity: 0.48; }
 .todo-body-btn {
   text-align: start;
   display: flex;

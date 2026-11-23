@@ -3,3 +3,8 @@ dist/
 test-results/
 playwright-report/
 .DS_Store
+.env
+cloud/.env
+cloud/.venv/
+__pycache__/
+.pytest_cache/

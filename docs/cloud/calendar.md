@@ -1,38 +1,54 @@
-# Calendar 领域架构
+# Calendar 领域架构（日程 · 月历 · 统一 Todo 与闹钟/Agent 调度）
 
-状态：**已对齐，2026-11-23。**
+状态：**已定稿，2026-11-23。**
 
-Calendar 采用「**今日日程 + 月历 + 统一 Todo**」三栏结构：既管理带起止时段的日程（Event），又通过 **Todo 的 `@指派对象` 机制** 用同一套交互统一配置个人闹钟（`@me`）与外部 Agent 定时计划（`@agent`），避免拆分两套割裂表单。视觉与交互遵循 [Pocket 设计标准](../design-standard.md)。
+**Pocket Calendar** 将原先分散的闹钟、Agent 计划、今日日程与月历收敛为同一个独立应用内的三栏结构（`[d] 今日日程 / [m] 月历 / [t] Todo`），视觉与交互遵循 [Pocket 设计标准](../design-standard.md)。
 
 ## 1. 领域对象
 
-| 对象 | 内容 |
+| 对象 | 核心内容 |
 | --- | --- |
-| Event | 日期（`date`）、起止时间（`start_time / end_time`）、标题、地点／备注、重复规则、提醒策略、来源、`revision` |
-| Todo | 文本内容（同时作为待办标题或发给 Agent 的 Prompt）、完成态（`done`）、指派目标（`none / @me / @agent_id`）、触发时间与周期、关联回执 |
-| Reminder & Route Link | Event 强提醒或 Todo `@me` 单向生成 Clock `alarm`；Todo `@agent` 单向生成 Cloud `schedule` |
+| `Event` | 日期、起止时间、标题、地点／备注、重复规则、提醒策略（静默 / 普通通知 / 强提醒响铃）、`revision` |
+| `Todo` | 正文（选 `@agent` 时直接作为发送 Prompt）、完成态（单次项）或启停态（周期项）、指派对象（`none / @me / @agent_id`）、关联 `linked_alarm_id` 或 `linked_schedule_id` |
+| `Alarm` | 触发时间、指定日期或重复周期、`cloud_locked`（本机锁）、`skip_next`（跳过下次）、目标设备策略、`EXECUTED` 回执 |
+| `Agent Schedule & Delivery` | 关联 `agent_binding_id`、单次 `run_at`（配截止时间 `expires_at`）或五段 `cron`（配相对有效时长 `ttl_seconds`）、`delivery_id`、一次性 `callback_token` 与可选回传摘要 |
 
-## 2. 统一 `@指派` 路由与单一数据源（防双份状态债）
+## 2. Todo 统一 `@指派` 路由与单次／周期区分
 
-同一条 Todo 共用同一个文本输入框与同一套时间／周期控件，仅通过切换**唤醒对象（Assignee）**决定后端去向；**`todos` 表本身不复制存储闹钟时间或投递状态，只保存 `linked_alarm_id` 或 `linked_schedule_id` 外键引用**，确保从 Clock、Calendar 或 Web 工作台任意一端修改时间／开关时全局状态始终唯一：
+同一条 Todo 共用一套输入框与时间选择器，仅切换**到点叫醒谁**：
 
-- **`仅待办 (none)`**：纯待办事项，不触发响铃或远程请求，勾选即完成。
-- **`@me`（手机响铃）**：在同一事务中创建／更新关联的 Clock `alarm`（`linked_alarm_id`），到点由手机 Clock App 响铃并返回真实 `EXECUTED` 状态；在同一台手机上离线创建时，Calendar 同时通过同签名显式广播唤醒本机 Clock 原生层立即设好系统闹钟。
-- **`@agent_id`（Agent 自动执行）**：在同一事务中创建／更新关联的 Cloud `schedule`（`linked_schedule_id`），到点将该条 Todo 正文作为 Prompt POST 给对应 Agent EP，收到 `202` 标为完成，并将可选回传摘要直接挂在该条 Todo 下方展示。
-- **完成联动**：勾选 Todo `[x]` 完成或删除 Todo 时，自动关闭／清理尚未触发的单次关联闹钟或计划。
-- **内联快速指派**：输入框支持直接键入 `@me 07:30 ...` 或 `@work-agent 16:00 ...` 自动识别对象与时间。
+- **`仅待办 (none)`**：纯待办事项，左边显示完成方框 `[☐]`，勾选即归档。
+- **`@me`（手机响铃）**：事务内同步创建／更新 `Alarm`，由手机原生层注册系统精确闹钟并返回真实 `EXECUTED`。
+- **`@agent_id`（Agent 自动执行）**：事务内同步创建／更新 `Schedule`，到点由云端将 Todo 正文 POST 给对应 Agent，收到 `202 Accepted` 记 `COMPLETED`，回传结果直接挂在该条 Todo 下方。
+- **单次事项 vs 周期循环项**：
+  - **单次事项**（不设时间，或选 `今天 / 明天 / 指定日期`）：左侧为**完成打勾框**，做完打勾归档并清理未触发提醒。
+  - **周期循环项**（选 `每天 / 工作日 / 每周`）：左侧自动变为**启停开关 `ON / OFF`**，不混入未完成待办计数；支持**跳过下一次**与**本机锁 `LOCKED`**（开启后禁止远程或 Agent 修改该条闹钟）。
 
-## 3. 今日日程与月历边界
+## 3. 真机响铃、贪睡与错过规则
 
-- **`[d] 今日日程（Today Agenda）`**：**仅显示当天的日程**（顶部唯一白底主角卡展示今日下一场／当前进行中日程，下方展示今日其余场次与重叠提示），不被跨天未来日程稀释注意力。
-- **`[m] 月历（Month）`**：7 列等宽月历矩阵（朱砂微点表示含 Clock 强提醒日程，墨色微点表示普通日程），点选任意日期查看该日安排并支持在该日新建日程。
-- **非阻断区间冲突提示**：同一日期内若存在 $I_i \cap I_j \neq \emptyset$，显式标记「时间重叠」，允许用户知情保存。
+- **全屏锁屏响铃页**：到点弹出极简大字全屏界面，仅保留 **「关闭本次」** 与 **「10 分钟后再响」** 两个大尺寸防误触操作。
+- **诚实错过语义**：连续响铃超时无人处理自动停止并标记 `MISSED`（不假装已完成）；设备关机错过的普通闹钟只标 `MISSED` 不补响，周期闹钟自动排下一次。
 
-## 4. HTTP 能力契约
+## 4. Agent 投递协议
 
-```text
-event.list / event.read / event.set / event.cancel
-todo.list / todo.set / todo.toggle / todo.cancel
+```http
+POST {agent_endpoint}/webhooks/pocket
+Authorization: Bearer <credential>
+Content-Type: application/json
 ```
 
-`todo.set` 根据 `target` 在同一数据库事务内协调 Clock `alarms` 或 Scheduler `schedules`，取消或删除 Todo 时同步清理未触发的关联闹钟或计划。
+```json
+{
+  "version": "v1",
+  "delivery_id": "dlv_01XYZ",
+  "source": "pocket.calendar",
+  "type": "prompt.requested",
+  "prompt": "整理本周日程与进展，生成复盘摘要",
+  "scheduled_for": "2026-11-23T08:00:00Z",
+  "triggered_at": "2026-11-23T08:00:01Z",
+  "result_callback_url": "https://pocket.example.com/v1/deliveries/dlv_01XYZ/result",
+  "callback_token": "cbk_one_time_token"
+}
+```
+
+Agent 接收排队后返回 `202 Accepted` 即记为 `COMPLETED`；网络错误或 5xx 按退避重试并复用同一 `delivery_id` 去重；超过有效窗口标记 `EXPIRED` 停止发送。
