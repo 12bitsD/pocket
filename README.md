@@ -105,4 +105,4 @@ pocket/
 └── scripts/            校验与 Release 打包脚本
 ```
 
-需要了解底层设计细节可查看 [`docs/architecture.md`](docs/architecture.md) 与 [`docs/design-standard.md`](docs/design-standard.md)。
+需要了解完整开发路线与底层设计细节，可查看 [`docs/development-plan.md`](docs/development-plan.md)、[`docs/architecture.md`](docs/architecture.md) 与 [`docs/design-standard.md`](docs/design-standard.md)。

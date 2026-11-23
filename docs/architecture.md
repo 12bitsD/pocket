@@ -41,9 +41,11 @@ Pocket 面向个人自托管优先场景，按真实使用场景拆分为**两�
 1. **`@me` 个人响铃（设备执行）**：在本地或网页端设置 `@me` 闹钟／日程强提醒 → 同步至目标手机原生安全库并注册系统闹钟 → 手机设置成功后回传真实 `EXECUTED`（网页端本身不响铃）。
 2. **`@agent` 定时任务（云端投递）**：到点由 `pocket-cloud` 生成唯一 `delivery_id` 与一次性回调密钥，HTTP POST 到绑定的外部 Agent 地址 → 收到 `202 Accepted` 标记 `COMPLETED`（不依赖手机在线，可选回传执行摘要挂回原 Todo 下方）。
 
-## 4. 分步落地路线
+## 4. 分步落地路线（详见 [整体开发方案](development-plan.md)）
 
-1. **Step 1（Cloud 第一期）**：在 `cloud/` 落地 Python 3.12 + FastAPI + PostgreSQL 服务，跑通初始密钥鉴权、Agent 绑定、单次/周期定时投递闭环，以及日程与 Todo 接口和真实数据库集成测试。
-2. **Step 2（Calendar 网页端打通）**：用轻量 `Vite` 模块化整理 `apps/calendar` 并接入真实 `pocket-cloud` 接口跑通日常使用。
-3. **Step 3（同步与 Calendar 安卓真机包）**：补齐 6 位配对码、WebSocket 断线补发与本机锁，打出 `Pocket Calendar` 首个 Android APK 发布至 GitHub Releases 并完成真机响铃与重启恢复验收。
-4. **Step 4（独立 Notes 专项设计与开发）**：单独深入设计并实现第二个独立应用 `Pocket Notes`。
+1. **Step 1（后台底座 + 首批 CLI）**：落地初始密钥登录、6 位手机配对码、Agent 权限密钥、外部 Agent 地址加密保存与配套 CLI 命令。
+2. **Step 2（日程/Todo + 定时唤醒 AI + 触发 CLI）**：完成日程冲突检测、统一 Todo（含本机锁）、后台定时投递重试、摘要回写与 `trigger` 调试命令。
+3. **Step 3（多端实时同步 + 同步 CLI）**：打通变更日志、长连接断线补齐、手机响铃回执推进、`sync watch/ack` 调试命令与 CI 自动测试。
+4. **Step 4（网页端正式接入）**：前端模块化改造并连上真实 `pocket-cloud` 服务完成日常可用闭环。
+5. **Step 5（安卓真机包 + GitHub Release）**：封装 Capacitor + Kotlin 原生响铃插件（开机未解锁恢复、全屏响铃页、权限自检卡），发布 `calendar-v*` 安装包至 GitHub Releases。
+6. **后续阶段（独立 Notes）**：单独设计与开发第二个独立应用 `Pocket Notes`。

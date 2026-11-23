@@ -46,9 +46,6 @@ Android 打包底座 : Capacitor 8.6 (compileSdk 36 / targetSdk 36 / minSdk 26 /
 
 ---
 
-## 3. 分阶段实施切片
+## 3. 分阶段实施路线
 
-1. **Step 1（Cloud 第一期）**：在 `cloud/` 落地 FastAPI + PostgreSQL 骨架、初始主密钥鉴权、`agent_binding.*`、单次/周期定时投递闭环，以及 Calendar `event.* / todo.*` 接口，使用真实 Docker PostgreSQL + 本地 HTTP Mock Agent 完成端到端测试。
-2. **Step 2（Calendar 网页端打通）**：引入轻量 `Vite` 与 `packages/client-core`，将 `apps/calendar` 接入真实 `pocket-cloud` 接口跑通日常使用。
-3. **Step 3（同步与 Calendar 安卓真机包）**：实现 6 位短时配对码、WebSocket `Link` 断点补发与 `LOCKED` 本机锁，打包 `Pocket Calendar` Android APK 发布至 GitHub Releases 并完成真机验收。
-4. **Step 4（独立 Notes 专项开发）**：单独深入设计并实现第二个独立应用 `Pocket Notes`。
+完整五步推进计划（后端 3 步含配套调试 CLI → 第 4 步网页端接入 → 第 5 步安卓打包发布至 GitHub Releases）统一记录在 [整体开发方案与分步路线](../development-plan.md)，后端建表与接口细则见 [后端实施手册](../cloud/implementation-plan.md)。
