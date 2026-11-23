@@ -2,7 +2,7 @@
 
 状态：**已对齐，2026-11-23。**
 
-Pocket Cloud 是 **Pocket Calendar**（时间与日程）、**Pocket Notes**（独立笔记）两个独立客户端应用与外部 Agent 共用的私有后端。采用模块化单体：一个 Python FastAPI 服务（含 HTTP RPC 与 WebSocket Link）、一个后台任务循环、一个 PostgreSQL 数据库，部署配置统一集中在仓库 [`../../cloud/`](../../cloud/) 目录下，**不引入 Redis、独立消息队列或 APScheduler**。
+Pocket Cloud 是 **Pocket Calendar**（时间与日程）、**Pocket Notes**（独立笔记）两个独立客户端应用与外部 Agent 共用的私有后端。采用模块化单体：一个 Python FastAPI 服务（含 HTTP RPC 与 WebSocket Link）、一个后台任务循环、一个 PostgreSQL 数据库，部署配置统一集中在仓库 [`../../cloud/`](../../cloud/) 目录下，**不引入 Redis、独立消息队列或 APScheduler**。可直接上手编码的分步开发手册见 [后端分步开发实施手册](implementation-plan.md)。
 
 ## 1. 模块结构
 

@@ -14,4 +14,4 @@ cp cloud/.env.example cloud/.env
 docker compose -f cloud/docker-compose.yml up -d
 ```
 
-Detailed protocol and schema rules live in [`../docs/cloud/architecture.md`](../docs/cloud/architecture.md).
+Detailed protocol and schema rules live in [`../docs/cloud/architecture.md`](../docs/cloud/architecture.md), and the step-by-step backend engineering blueprint lives in [`../docs/cloud/implementation-plan.md`](../docs/cloud/implementation-plan.md).
