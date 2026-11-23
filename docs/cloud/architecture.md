@@ -33,7 +33,8 @@ Web 工作台 / Android Apps / External Agent
 | Identity & Pairing | `users`, `devices`, `pairing_codes`, `agent_bindings`, `links`, `grants` | 初始密钥、6 位配对码、设备独立凭证、Agent 加密配置与动作权限 |
 | Idempotency & Sync | `idempotency_keys`, `operations`, `receipts`, `outbox` | 防重复提交、`server_seq` 顺序、断点补发与回执 |
 | Clock | `alarms`, `alarm_targets` | 普通闹钟快照、本机锁与目标设备策略 |
-| Calendar / Notes | `events`, `reminder_links`, `notes`, `note_revisions` | 后续领域快照与细粒度授权范围 |
+| Calendar | `events`, `todos` | 日程快照、冲突检测与统一 `@指派` Todo（仅保存 `linked_alarm_id` / `linked_schedule_id` 引用，不重复存时间与回执状态） |
+| Notes（后续专项扩展） | `notes`, `note_revisions` | 后续专项打磨后的笔记快照与细粒度授权范围 |
 | Schedule & Delivery | `schedules`, `deliveries`, `delivery_results` | 单次/周期计划、每次触发投递、一次性回调密钥与回传摘要 |
 
 **事务与预留规则**：业务表变更与 `outbox` / 待触发记录写入必须在同一数据库事务中提交；第一期给 `schedules` 预留 `revision` 与 `deleted_at` 字段，以便第二期无缝接入客户端同步。
@@ -47,6 +48,7 @@ Web 工作台 / Android Apps / External Agent
   - Agent 绑定：`agent_binding.set`, `agent_binding.list`, `agent_binding.revoke`
   - 普通闹钟：`alarm.list`, `alarm.set`, `alarm.cancel`, `operation.get`
   - Agent 计划：`agent_alarm.list`, `agent_alarm.set`, `agent_alarm.cancel`, `delivery.get`
+  - 日历与 Todo：`event.list`, `event.read`, `event.set`, `event.cancel`, `todo.list`, `todo.set`, `todo.toggle`, `todo.cancel`
 - **基础与外部端点走普通路径**：
   - `GET /healthz`：健康与数据库探活
   - `POST /v1/deliveries/{delivery_id}/result`：外部 Agent 携带一次性回调密钥回传执行摘要

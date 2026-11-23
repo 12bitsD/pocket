@@ -24,9 +24,13 @@ Pocket 面向个人自托管优先场景，由**手机端三个独立 Android Ap
   └──────────────┘  └──────────────┘  └──────────────┘  └────────────────┘
 ```
 
-- **手机端拆开做减法**：Clock、Calendar、Notes 是三个独立 Android App（各自独立图标、包名、版本号与 GitHub Release），日常在手机上点开 Clock 只做闹钟相关操作，不被笔记和日程稀释。
-- **电脑端合起来提效率**：提供 1 个统一的 Web 工作台（可由 `pocket-cloud` 同源托管），集中完成配 Agent、写长段 Prompt 计划、写 Markdown 笔记、排日程和远程给手机设闹钟。**Web 工作台本身不响铃**，普通闹钟同步给手机 Clock App 执行并等待手机返回真实 `EXECUTED`。
-- **客户端实现路线**：界面与交互统一复用 Web 模块与 `packages/design-system`；手机端通过 **Capacitor + Kotlin 薄层原生插件** 打包运行——其中手机端权威闹钟表与离线 `outbox` 直接落在 Android 原生本地 SQLite 中，精确闹钟（`AlarmManager`）、锁屏全屏响铃、开机广播恢复和 ColorOS 权限跳转由 Kotlin 原生层负责，不依赖浏览器缓存存活。
+- **手机端拆开做减法**：Clock、Calendar、Notes 是三个独立 Android App（各自独立图标、包名、版本号与 GitHub Release），日常在手机上点开 Clock 只做闹钟相关操作，不被笔记和日程稀释。**首轮工程落地先聚焦 Clock 与 Calendar 两个应用**，Notes 待后续专项打磨完产品细节后再接入。
+- **电脑端合起来提效率**：提供 1 个统一的 Web 工作台（`apps/web`，由 `pocket-cloud` 同源静态托管），直接组合挂载 Clock 与 Calendar 视图模块（零 `<iframe>`），集中完成配 Agent、写 Prompt 计划、排日程、管 Todo 和远程给手机设闹钟。**Web 工作台本身不响铃**，普通闹钟同步给手机 Clock App 执行并等待手机返回真实 `EXECUTED`。
+- **客户端实现路线（已核验拍板）**：
+  - **前端工程层**：通过轻量 `Vite` 构建抽离共享 `packages/client-core`（RPC 客户端、幂等键、WebSocket `Link` 同步与 `PocketRuntime` 适配接口），一套模块化界面源码同时编译出电脑统一 `apps/web` 与各 Android App 的自包含静态包。
+  - **Android 容器与原生边界**：采用 **Capacitor 8.6（`targetSdk 36 / minSdk 26`）+ Kotlin 薄层原生插件**。**只有 Clock 持有重度响铃引擎**——权威 `alarms` 与离线 `outbox` 存入 Android **设备加密区（Device-Protected Storage）原生 SQLite**（不使用社区 WebView SQLite 插件），支持手机夜间重启未解锁（Direct Boot `LOCKED_BOOT_COMPLETED`）恢复闹钟，统一使用 `USE_EXACT_ALARM` + `AlarmManager.setAlarmClock()`、全屏锁屏唤醒与前台响铃服务，并内置 ColorOS 权限自检引导。
+  - **手机双独立 App 本机直连**：Calendar 不重复实现闹钟响铃引擎；同一台手机上 Calendar 创建强提醒或 `@me` Todo 时，除写入离线队列同步 Cloud 外，还通过同签名（`signature` 权限）显式广播直接唤醒本机 Clock 原生层落库设闹钟，断网飞行模式下依然可靠生效。
+  - **远程下发诚实边界**：自托管默认不依赖商业厂商推送通道；手机端后台被冻结时，电脑端远程新建闹钟如实停留为 `OFFLINE_QUEUED`，待 Clock 前台打开或原生 `WorkManager` 周期拉取写入系统闹钟后才推进为 `EXECUTED`。
 
 ## 2. 职责划分
 
@@ -76,9 +80,9 @@ Cloud 受理（`ACCEPTED`）与手机原生执行（`EXECUTED`）严格分开。
 
 后续接入 Notes 与 Calendar 时，用户在工作台为指定 Agent 勾选允许访问的笔记范围或日历读取权限，签发受限密钥供 Agent 调用 `note.read` / `event.list`；未授权内容不可读取，Pocket 仍不介入 Agent 内部运行过程。
 
-## 5. 分阶段落地路线
+## 5. 分阶段落地路线（先做 Clock + Calendar，Notes 后续专项设计）
 
-1. **Step 1（Cloud 第一期）**：搭建 Python 3.12 + FastAPI + PostgreSQL 后端，跑通初始密钥鉴权、Agent 绑定加密管理、单次/周期 Agent 计划调度、投递重试与回调回执闭环。
-2. **Step 2（电脑 Web 工作台首版）**：将已定稿的 Clock 界面接入真实 Cloud 接口，先在电脑浏览器端跑通真实日常使用。
-3. **Step 3（Cloud 第二期 + Clock Android 客户端）**：补齐 6 位配对码、WebSocket Link 断线补发、普通闹钟同步与本机锁冲突处理，并用 Capacitor + Kotlin 原生闹钟插件打出首个 Android 安装包上真机验收。
-4. **Step 4（Calendar & Notes 扩展）**：沿同一模块结构新增日历与笔记领域表、Web 工作台分栏与独立 Android App。
+1. **Step 1（Cloud 第一期：核心底座 + Agent 计划与日历/Todo 契约）**：搭建 Python 3.12 + FastAPI + PostgreSQL 后端，跑通初始主密钥鉴权、Agent 绑定加密管理、单次/周期 Agent 计划调度投递闭环，以及 Calendar `events / todos`（含 `@me / @agent` 单一引用关联）接口与真实 Docker PG 集成测试。
+2. **Step 2（前端去原型债 + 电脑统一 Web 工作台首版）**：用 `Vite` + `packages/client-core` 将 Clock 与 Calendar 单文件原型拆为可复用模块，组装出 `apps/web` 统一工作台并接入真实 Cloud 接口跑通日常使用。
+3. **Step 3（Cloud 第二期同步 + Clock & Calendar 双 Android 客户端）**：补齐 6 位配对码、WebSocket `Link` 断线补发、普通闹钟同步与本机锁冲突处理；用 Capacitor 8.6 + Kotlin 原生插件打包 `Clock`（含 DE 原生 SQLite、`setAlarmClock`、Direct Boot 恢复、ColorOS 自检卡）与 `Calendar`（含离线缓存与同机唤醒 Clock 快通道）两个独立 APK 上真机验收。
+4. **Step 4（Notes 专项设计与扩展）**：单独打磨完善 Notes 的编辑、组织与细粒度 Agent 授权体验后，再接入 Cloud、Web 工作台与第三个独立 Android App。

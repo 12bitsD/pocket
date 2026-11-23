@@ -12,13 +12,14 @@ Calendar 采用「**今日日程 + 月历 + 统一 Todo**」三栏结构：既�
 | Todo | 文本内容（同时作为待办标题或发给 Agent 的 Prompt）、完成态（`done`）、指派目标（`none / @me / @agent_id`）、触发时间与周期、关联回执 |
 | Reminder & Route Link | Event 强提醒或 Todo `@me` 单向生成 Clock `alarm`；Todo `@agent` 单向生成 Cloud `schedule` |
 
-## 2. 统一 `@指派` 路由（一套交互管闹钟与 Agent 计划）
+## 2. 统一 `@指派` 路由与单一数据源（防双份状态债）
 
-同一条 Todo 共用同一个文本输入框与同一套时间／周期控件，仅通过切换**唤醒对象（Assignee）**决定后端去向：
+同一条 Todo 共用同一个文本输入框与同一套时间／周期控件，仅通过切换**唤醒对象（Assignee）**决定后端去向；**`todos` 表本身不复制存储闹钟时间或投递状态，只保存 `linked_alarm_id` 或 `linked_schedule_id` 外键引用**，确保从 Clock、Calendar 或 Web 工作台任意一端修改时间／开关时全局状态始终唯一：
 
 - **`仅待办 (none)`**：纯待办事项，不触发响铃或远程请求，勾选即完成。
-- **`@me`（手机响铃）**：在同一事务中同步生成／更新关联的 Clock Alarm，到点由手机 Clock App 响铃并返回真实 `EXECUTED` 状态。
-- **`@agent_id`（Agent 自动执行）**：在同一事务中同步生成／更新 Cloud 定时计划（`schedules`），到点将该条 Todo 正文作为 Prompt POST 给对应 Agent EP，收到 `202` 标为完成，并将可选回传摘要直接挂在该条 Todo 下方展示。
+- **`@me`（手机响铃）**：在同一事务中创建／更新关联的 Clock `alarm`（`linked_alarm_id`），到点由手机 Clock App 响铃并返回真实 `EXECUTED` 状态；在同一台手机上离线创建时，Calendar 同时通过同签名显式广播唤醒本机 Clock 原生层立即设好系统闹钟。
+- **`@agent_id`（Agent 自动执行）**：在同一事务中创建／更新关联的 Cloud `schedule`（`linked_schedule_id`），到点将该条 Todo 正文作为 Prompt POST 给对应 Agent EP，收到 `202` 标为完成，并将可选回传摘要直接挂在该条 Todo 下方展示。
+- **完成联动**：勾选 Todo `[x]` 完成或删除 Todo 时，自动关闭／清理尚未触发的单次关联闹钟或计划。
 - **内联快速指派**：输入框支持直接键入 `@me 07:30 ...` 或 `@work-agent 16:00 ...` 自动识别对象与时间。
 
 ## 3. 今日日程与月历边界
