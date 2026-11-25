@@ -44,32 +44,32 @@ class AlarmHardwareController(private val serviceContext: Context) {
     }
 
     fun stopAll() {
-        try {
+        runCleanupStep("Failed stopping ringtone") {
             ringtone?.stop()
-        } catch (err: Exception) {
-            Log.w(TAG, "Failed stopping ringtone", err)
         }
         ringtone = null
-        try {
+        runCleanupStep("Failed releasing ToneGenerator") {
             fallbackTone?.stopTone()
             fallbackTone?.release()
-        } catch (err: Exception) {
-            Log.w(TAG, "Failed releasing ToneGenerator", err)
         }
         fallbackTone = null
-        try {
+        runCleanupStep("Failed canceling vibrator") {
             resolveVibrator()?.cancel()
-        } catch (err: Exception) {
-            Log.w(TAG, "Failed canceling vibrator", err)
         }
-        try {
+        runCleanupStep("Failed releasing wakeLock") {
             if (wakeLock?.isHeld == true) {
                 wakeLock?.release()
             }
-        } catch (err: Exception) {
-            Log.w(TAG, "Failed releasing wakeLock", err)
         }
         wakeLock = null
+    }
+
+    private fun runCleanupStep(message: String, step: () -> Unit) {
+        try {
+            step()
+        } catch (err: Exception) {
+            Log.w(TAG, message, err)
+        }
     }
 
     private fun tryStartSystemRingtone(): Boolean {

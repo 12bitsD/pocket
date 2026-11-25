@@ -103,13 +103,13 @@ jobs:
         id: bits-bin
         with:
           path: ~/.cargo/bin/bits
-          key: bits-v0.3.5-${{ runner.os }}
+          key: bits-v0.5.0-${{ runner.os }}
       - if: steps.bits-bin.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@stable
       - if: steps.bits-bin.outputs.cache-hit != 'true'
-        name: Install bits v0.3.5
+        name: Install bits v0.5.0
         run: >-
           cargo install --git https://github.com/12bitsD/bits-style
-          --tag v0.3.5 --locked
+          --tag v0.5.0 --locked
       - name: Run static style and hygiene audit
         run: python3 scripts/eval/audit_codebase.py --root .

@@ -118,21 +118,8 @@ class PocketAlarmPlugin : Plugin() {
         val enabled = obj.optBoolean("enabled", true)
         val skipNext = obj.optBoolean("skipNext", false)
         val existing = existingByKey[alarmKey]
-        val preservedSnooze = if (enabled) {
-            existing?.snoozeUntilMs?.takeIf { it > nowMs }
-        } else {
-            null
-        }
-        val preservedSkipTarget = if (enabled && skipNext) {
-            existing?.skipTargetMs
-        } else {
-            null
-        }
-        val weeklyVal = if (obj.isNull("weeklyDow")) {
-            null
-        } else {
-            obj.optInt("weeklyDow", 5)
-        }
+        val snoozeMs = existing?.snoozeUntilMs?.takeIf { enabled && it > nowMs }
+        val skipTarget = existing?.skipTargetMs?.takeIf { enabled && skipNext }
         return AlarmRecord(
             alarmKey = alarmKey,
             entityType = entityType,
@@ -142,18 +129,29 @@ class PocketAlarmPlugin : Plugin() {
             scheduleKind = optCleanString(obj, "scheduleKind"),
             timeHhmm = optCleanString(obj, "timeHhmm"),
             onceDate = optCleanString(obj, "onceDate"),
-            weeklyDow = weeklyVal,
+            weeklyDow = optIntOrNull(obj, "weeklyDow", 5),
             repeatRule = optCleanString(obj, "repeatRule"),
             eventDate = optCleanString(obj, "eventDate"),
             startHhmm = optCleanString(obj, "startHhmm"),
             reminderOffsetMinutes = obj.optInt("reminderOffsetMinutes", 0),
             timezone = optCleanString(obj, "timezone") ?: "Asia/Shanghai",
             skipNext = skipNext,
-            skipTargetMs = preservedSkipTarget,
+            skipTargetMs = skipTarget,
             enabled = enabled,
-            snoozeUntilMs = preservedSnooze,
+            snoozeUntilMs = snoozeMs,
             nextTriggerMs = null
         )
+    }
+
+    private fun optIntOrNull(
+        obj: JSONObject,
+        key: String,
+        fallback: Int
+    ): Int? {
+        if (obj.isNull(key)) {
+            return null
+        }
+        return obj.optInt(key, fallback)
     }
 
     private fun optCleanString(obj: JSONObject, key: String): String? {

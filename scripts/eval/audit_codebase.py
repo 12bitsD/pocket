@@ -24,7 +24,9 @@ HEX_COLOR_RE = re.compile(
     r"#([0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b"
 )
 ALLOW_PREFIX = "bits:"
-ALLOW_RE = re.compile(ALLOW_PREFIX + r"(allow|explain)\(([^)]*)\):\s*(.*)")
+ALLOW_RE = re.compile(
+    ALLOW_PREFIX + r"(allow|prove|explain)\(([^)]*)\):\s*(.*)"
+)
 
 
 @dataclass(frozen=True)
@@ -34,9 +36,35 @@ class Finding:
     message: str
 
 
+BITS_TARGETS = (
+    "apps",
+    "packages",
+    "cloud",
+    "scripts/check-apps.js",
+    "scripts/eval",
+)
+BITS_CHECKS = (
+    (
+        "bits-baseline",
+        (
+            "check",
+            *BITS_TARGETS,
+            "--config",
+            "bits.toml",
+            "--baseline",
+            "bits-baseline.json",
+        ),
+    ),
+    (
+        "bits-diff",
+        ("check", "--diff", "--commit", "origin/main", "--config", "bits.toml"),
+    ),
+)
+
+
 def run_bits_gate(root: Path) -> list[Finding]:
     proc = subprocess.run(
-        ["bits", "style", "report", "."],
+        ["bits", "style", "report", *BITS_TARGETS, "--config", "bits.toml"],
         cwd=root,
         capture_output=True,
         text=True,
@@ -48,13 +76,8 @@ def run_bits_gate(root: Path) -> list[Finding]:
     summary = report.get("summary") or dict()
     findings = check_bits_summary(summary)
     for item in report.get("results", ()):
-        finding = classify_bits_item(item)
-        if finding is not None:
-            findings.append(finding)
-    for cmd_tag, args in (
-        ("bits-baseline", ["check", ".", "--baseline", "bits-baseline.json"]),
-        ("bits-diff", ["check", "--diff", "--commit", "origin/main"]),
-    ):
+        findings.append(classify_bits_item(item))
+    for cmd_tag, args in BITS_CHECKS:
         sub = subprocess.run(
             ["bits", "style", *args],
             cwd=root,
@@ -76,17 +99,10 @@ def check_bits_summary(summary: dict) -> list[Finding]:
     return findings
 
 
-def classify_bits_item(item: dict) -> Finding | None:
+def classify_bits_item(item: dict) -> Finding:
     file_path = item.get("file", "")
     rule_id = item.get("rule_id", "")
     severity = item.get("severity", "")
-    legacy_cron = (
-        file_path == "packages/agent-core/src/cron.js"
-        and rule_id == "BCS003"
-        and severity == "warning"
-    )
-    if legacy_cron:
-        return None
     rng = item.get("range") or dict()
     start = rng.get("start") or dict()
     loc = "%s:%d" % (file_path, start.get("line", 1))
@@ -120,16 +136,20 @@ def iter_android_files(root: Path, suffixes: tuple[str, ...]) -> list[Path]:
 def scan_file_suppressions(rel: str, text: str) -> tuple[int, list[Finding]]:
     findings = []
     count = 0
-    tag_allow = ALLOW_PREFIX + "allow"
-    tag_explain = ALLOW_PREFIX + "explain"
+    tags = (
+        ALLOW_PREFIX + "allow",
+        ALLOW_PREFIX + "prove",
+        ALLOW_PREFIX + "explain",
+    )
     for idx, line in enumerate(text.splitlines(), start=1):
-        if tag_allow not in line and tag_explain not in line:
+        if not any(tag in line for tag in tags):
             continue
         count += 1
         match = ALLOW_RE.search(line)
+        rule_part = match.group(2).split(",")[0].strip() if match else ""
         valid = bool(
             match
-            and re.fullmatch(r"BCS\d+", match.group(2).strip())
+            and re.fullmatch(r"BCS\d+", rule_part)
             and len(match.group(3).strip()) >= 6
         )
         if not valid:

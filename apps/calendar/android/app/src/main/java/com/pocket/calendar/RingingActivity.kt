@@ -155,9 +155,9 @@ class RingingActivity : Activity() {
             fontFeatureSettings = "tnum"
             letterSpacing = -0.04f
         }
-        root.addView(ttyHeader, lpWrap(16))
-        root.addView(stampBadge, lpWrap(18))
-        root.addView(clockView, lpMatch(18))
+        root.addView(ttyHeader, linearParams(WRAP, WRAP, 16))
+        root.addView(stampBadge, linearParams(WRAP, WRAP, 18))
+        root.addView(clockView, linearParams(MATCH, WRAP, 18))
     }
 
     private fun appendRuleAndMetadata(root: LinearLayout) {
@@ -176,54 +176,74 @@ class RingingActivity : Activity() {
             setTextColor(getColor(R.color.paperMuted))
             fontFeatureSettings = "tnum"
         }
-        val ruleLp = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(1)
-        ).apply { bottomMargin = dp(18) }
-        root.addView(ruleTop, ruleLp)
-        root.addView(titleView, lpMatch(6))
-        root.addView(subtitleView, lpMatch(36))
+        root.addView(ruleTop, linearParams(MATCH, dp(1), 18))
+        root.addView(titleView, linearParams(MATCH, WRAP, 6))
+        root.addView(subtitleView, linearParams(MATCH, WRAP, 36))
     }
 
+    private data class ButtonStyle(
+        val textColorRes: Int,
+        val textSizeSp: Float,
+        val face: Typeface,
+        val bg: GradientDrawable
+    )
+
     private fun appendActionButtons(root: LinearLayout) {
-        val dismissBtn = Button(this).apply {
-            text = "关闭本次"
-            isAllCaps = false
-            stateListAnimator = null
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
-            setTextColor(getColor(R.color.paperCarbon))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(3).toFloat()
-                setColor(getColor(R.color.paperInk))
-            }
-            setOnClickListener {
-                dispatchServiceAction(
-                    AlarmRingingService.ACTION_DISMISS_RINGING
-                )
+        val dismissStyle = ButtonStyle(
+            textColorRes = R.color.paperCarbon,
+            textSizeSp = 16f,
+            face = Typeface.create("sans-serif-medium", Typeface.NORMAL),
+            bg = roundedRectDrawable(R.color.paperInk, strokeColor = null)
+        )
+        val snoozeStyle = ButtonStyle(
+            textColorRes = R.color.paperInk,
+            textSizeSp = 14f,
+            face = Typeface.MONOSPACE,
+            bg = roundedRectDrawable(R.color.cardDark, R.color.paperRule)
+        )
+        val dismissBtn = buildActionButton(
+            "关闭本次",
+            dismissStyle,
+            AlarmRingingService.ACTION_DISMISS_RINGING
+        )
+        val snoozeBtn = buildActionButton(
+            "10 分钟后再响",
+            snoozeStyle,
+            AlarmRingingService.ACTION_SNOOZE_RINGING
+        ).apply { fontFeatureSettings = "tnum" }
+        root.addView(dismissBtn, linearParams(MATCH, dp(50), 12))
+        root.addView(snoozeBtn, linearParams(MATCH, dp(50), 0))
+    }
+
+    private fun roundedRectDrawable(
+        fillRes: Int,
+        strokeColor: Int?
+    ): GradientDrawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = dp(3).toFloat()
+            setColor(getColor(fillRes))
+            if (strokeColor != null) {
+                setStroke(dp(1), getColor(strokeColor))
             }
         }
-        val snoozeBtn = Button(this).apply {
-            text = "10 分钟后再响"
+    }
+
+    private fun buildActionButton(
+        label: String,
+        style: ButtonStyle,
+        action: String
+    ): Button {
+        return Button(this).apply {
+            text = label
             isAllCaps = false
             stateListAnimator = null
-            typeface = Typeface.MONOSPACE
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
-            setTextColor(getColor(R.color.paperInk))
-            fontFeatureSettings = "tnum"
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(3).toFloat()
-                setColor(getColor(R.color.cardDark))
-                setStroke(dp(1), getColor(R.color.paperRule))
-            }
-            setOnClickListener {
-                dispatchServiceAction(AlarmRingingService.ACTION_SNOOZE_RINGING)
-            }
+            typeface = style.face
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, style.textSizeSp)
+            setTextColor(getColor(style.textColorRes))
+            background = style.bg
+            setOnClickListener { dispatchServiceAction(action) }
         }
-        root.addView(dismissBtn, lpButton(12))
-        root.addView(snoozeBtn, lpButton(0))
     }
 
     private fun buildVermilionStampBackground(): LayerDrawable {
@@ -253,25 +273,14 @@ class RingingActivity : Activity() {
         finish()
     }
 
-    private fun lpWrap(bottomDp: Int): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(bottomDp) }
-    }
-
-    private fun lpMatch(bottomDp: Int): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(bottomDp) }
-    }
-
-    private fun lpButton(bottomDp: Int): LinearLayout.LayoutParams {
-        return LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            dp(50)
-        ).apply { bottomMargin = dp(bottomDp) }
+    private fun linearParams(
+        width: Int,
+        height: Int,
+        bottomDp: Int
+    ): LinearLayout.LayoutParams {
+        return LinearLayout.LayoutParams(width, height).apply {
+            bottomMargin = dp(bottomDp)
+        }
     }
 
     private fun dp(value: Int): Int {
@@ -284,6 +293,8 @@ class RingingActivity : Activity() {
 
     companion object {
         private const val TAG = "PocketRingingUi"
+        private const val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
+        private const val WRAP = LinearLayout.LayoutParams.WRAP_CONTENT
         private const val ACTION_FINISH_RINGING =
             "com.pocket.calendar.ACTION_FINISH_RINGING"
         private val HH_MM_FMT: DateTimeFormatter =

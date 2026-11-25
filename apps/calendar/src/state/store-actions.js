@@ -14,11 +14,7 @@ import {
   buildOptimisticTodoToggle
 } from '../domain/local-mutations.js';
 import { buildTodoSetParams } from '../domain/todo-model.js';
-import { fetchCloudSnapshot } from './cloud-session.js';
-import {
-  flushOfflineQueue,
-  reapplyOfflineOverlay
-} from './offline-flush.js';
+import { flushOfflineQueue } from './offline-flush.js';
 import {
   isOfflineFallbackError,
   recordOfflineEventDelete,
@@ -33,30 +29,15 @@ import {
   hasScope,
   mergeMasterEvents,
   mergeTodoList,
-  resolveLocalDeviceFlag,
   upsertByRevision
 } from './sync-reducer.js';
 
-function assertLocalUnlocked(ctx, existing, nextLocked) {
-  const isLocal = resolveLocalDeviceFlag(ctx.state, ctx.isNative);
-  if (!isLocal && (existing?.locked || nextLocked)) {
-    throw new CloudRpcError(409, 'CLOUD_LOCKED', 'Todo is locked on device');
-  }
-}
-
-async function callWriteWithConflictSync(ctx, method, params, notify) {
+async function callWriteWithConflictSync(ctx, method, params) {
   try {
     return await ctx.client.callRpc(method, params);
   } catch (err) {
-    if (err?.status === 409 && ctx.state.mode === 'cloud' &&
-        ctx.state.identity) {
-      const epoch = ctx.sessionEpoch;
-      const snap = await fetchCloudSnapshot(ctx, ctx.state.identity)
-        .catch(() => null);
-      if (snap && ctx.sessionEpoch === epoch && ctx.state.mode === 'cloud') {
-        ctx.state = reapplyOfflineOverlay({ ...ctx.state, ...snap });
-        notify(ctx);
-      }
+    if (err?.status === 409 && typeof ctx.resyncSnapshot === 'function') {
+      await ctx.resyncSnapshot();
     }
     throw err;
   }
@@ -77,9 +58,7 @@ async function runCloudWriteWithOffline(ctx, spec, notify) {
   let result = null;
   let rpcErr = null;
   try {
-    result = await callWriteWithConflictSync(
-      ctx, spec.method, spec.params, notify
-    );
+    result = await callWriteWithConflictSync(ctx, spec.method, spec.params);
   } catch (err) {
     rpcErr = err;
   }
@@ -165,7 +144,6 @@ export async function saveTodoAction(ctx, draft, notify) {
     timezone: ctx.timezone
   });
   if (ctx.state.mode !== 'cloud') {
-    assertLocalUnlocked(ctx, existing, params.locked);
     const localTd = buildOptimisticTodoSave(params, existing, 'demo_td');
     ctx.state = {
       ...ctx.state,
@@ -179,10 +157,7 @@ export async function saveTodoAction(ctx, draft, notify) {
     entityId: existing?.todo_id || null,
     method: 'todo.set',
     params,
-    onOffline: () => {
-      assertLocalUnlocked(ctx, existing, params.locked);
-      return recordOfflineTodoSave(ctx, params, existing, notify);
-    }
+    onOffline: () => recordOfflineTodoSave(ctx, params, existing, notify)
   }, notify);
   if (outcome.offline) {
     return outcome.value;
@@ -202,7 +177,6 @@ export async function toggleTodoAction(ctx, todoId, notify) {
     if (!existing) {
       return null;
     }
-    assertLocalUnlocked(ctx, existing, existing.locked);
     const updated = buildOptimisticTodoToggle(existing);
     ctx.state = {
       ...ctx.state,
@@ -216,10 +190,7 @@ export async function toggleTodoAction(ctx, todoId, notify) {
     entityId: id,
     method: 'todo.toggle',
     params: { todo_id: id, base_revision: existing?.revision },
-    onOffline: () => {
-      assertLocalUnlocked(ctx, existing, existing?.locked);
-      return recordOfflineTodoToggle(ctx, existing, notify);
-    }
+    onOffline: () => recordOfflineTodoToggle(ctx, existing, notify)
   }, notify);
   if (outcome.offline) {
     return outcome.value;
@@ -253,16 +224,11 @@ export async function removeTodoAction(ctx, todoId, notify) {
       entityId: id,
       method: 'todo.delete',
       params: { todo_id: id, base_revision: existing?.revision },
-      onOffline: () => {
-        assertLocalUnlocked(ctx, existing, false);
-        recordOfflineTodoDelete(ctx, id, notify);
-      }
+      onOffline: () => recordOfflineTodoDelete(ctx, id, notify)
     }, notify);
     if (outcome.offline) {
       return;
     }
-  } else {
-    assertLocalUnlocked(ctx, existing, false);
   }
   ctx.state = {
     ...ctx.state,

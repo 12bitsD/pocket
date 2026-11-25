@@ -10,8 +10,8 @@ import httpx
 import uvicorn
 
 from .app import create_app
-from .cli_commands import add_domain_parsers, execute_domain, format_table
-from .cli_sync import add_sync_parsers, execute_sync
+from .cli_commands import add_domain_parsers, format_table
+from .cli_sync import add_sync_parsers
 from .config import Settings
 from .crypto import encryption_key
 from .errors import CliError
@@ -22,6 +22,13 @@ class Target:
     base_url: str
     token: str | None
     ws_connect: object = None
+
+
+@dataclass(frozen=True)
+class CliRuntime:
+    target: Target
+    rpc: object
+    new_request_id: object
 
 
 def format_http_error(response: httpx.Response) -> str:
@@ -63,9 +70,12 @@ def build_parser():
 
     parser = argparse.ArgumentParser(prog="pocket-cloud")
     parser.add_argument("--json", dest="root_json", action="store_true")
+    parser.set_defaults(uses_http=True, is_watch=False, is_serve=False)
     groups = parser.add_subparsers(dest="group", required=True)
-    groups.add_parser("serve")
-    groups.add_parser("status", parents=[json_parent])
+    groups.add_parser("serve").set_defaults(is_serve=True, uses_http=False)
+    groups.add_parser("status", parents=[json_parent]).set_defaults(
+        handler=handle_status
+    )
     add_pair_parsers(groups, json_parent)
     add_token_parsers(groups, json_parent)
     add_agent_parsers(groups, json_parent)
@@ -86,10 +96,13 @@ def add_pair_parsers(groups, json_parent):
     pair = groups.add_parser("pair").add_subparsers(
         dest="action", required=True
     )
-    pair.add_parser("create", parents=[json_parent])
+    pair.add_parser("create", parents=[json_parent]).set_defaults(
+        handler=handle_pair_create
+    )
     claim = pair.add_parser("claim", parents=[json_parent])
     claim.add_argument("code")
     claim.add_argument("--name", required=True)
+    claim.set_defaults(handler=handle_pair_claim)
 
 
 def add_token_parsers(groups, json_parent):
@@ -100,9 +113,13 @@ def add_token_parsers(groups, json_parent):
     create.add_argument("--kind", choices=["web", "agent"], required=True)
     create.add_argument("--label", required=True)
     create.add_argument("--scopes", default="")
-    token.add_parser("list", parents=[json_parent])
+    create.set_defaults(handler=handle_token_create)
+    token.add_parser("list", parents=[json_parent]).set_defaults(
+        handler=handle_token_list
+    )
     revoke = token.add_parser("revoke", parents=[json_parent])
     revoke.add_argument("token_id")
+    revoke.set_defaults(handler=handle_token_revoke)
 
 
 def add_agent_parsers(groups, json_parent):
@@ -114,18 +131,22 @@ def add_agent_parsers(groups, json_parent):
     set_parser.add_argument("--url", required=True)
     set_parser.add_argument("--key")
     set_parser.add_argument("--name")
-    agent.add_parser("list", parents=[json_parent])
+    set_parser.set_defaults(handler=handle_agent_set)
+    agent.add_parser("list", parents=[json_parent]).set_defaults(
+        handler=handle_agent_list
+    )
     revoke = agent.add_parser("revoke", parents=[json_parent])
     revoke.add_argument("agent_id")
+    revoke.set_defaults(handler=handle_agent_revoke)
 
 
 async def run_with_args(args, target: Target, client):
-    if args.group == "serve":
+    if args.is_serve:
         raise CliError("serve is available only from the process entry point")
-    data = await execute(args, target, client)
-    is_watch = args.group == "sync" and getattr(args, "action", "") == "watch"
+    rpc = RpcClient(client, target) if client is not None else None
+    data = await args.handler(args, CliRuntime(target, rpc, new_request_id))
     json_mode = getattr(args, "json_output", False)
-    if not is_watch:
+    if not args.is_watch:
         if json_mode:
             print(json.dumps(data, ensure_ascii=False, indent=2))
         else:
@@ -147,7 +168,7 @@ def build_target(env, ws_connect=None) -> Target:
 
 
 async def run_with_client(args, target: Target, client=None):
-    if client is not None or args.group == "sync":
+    if client is not None or not args.uses_http:
         return await run_with_args(args, target, client)
     async with httpx.AsyncClient(timeout=10) as owned_client:
         return await run_with_args(args, target, owned_client)
@@ -159,59 +180,64 @@ async def run(argv, env, client=None, ws_connect=None):
     return await run_with_client(args, target, client)
 
 
-async def execute(args, target, client):
-    if args.group == "sync":
-        return await execute_sync(args, target)
-    rpc = RpcClient(client, target)
-    if args.group == "status":
-        try:
-            response = await client.get(f"{target.base_url}/healthz")
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise CliError(f"Health check failed: {exc}") from exc
-        identity = await rpc.call("auth.status", dict())
-        return dict(health=response.json(), identity=identity)
-    if args.group == "pair":
-        return await execute_pair(args, rpc)
-    if args.group == "token":
-        return await execute_token(args, rpc)
-    if args.group == "agent":
-        return await execute_agent(args, rpc)
-    return await execute_domain(args, rpc, new_request_id)
+async def handle_status(args, rt: CliRuntime):
+    _ = args
+    try:
+        response = await rt.rpc.client.get(f"{rt.target.base_url}/healthz")
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise CliError(f"Health check failed: {exc}") from exc
+    identity = await rt.rpc.call("auth.status", dict())
+    return dict(health=response.json(), identity=identity)
 
 
-async def execute_pair(args, rpc):
-    if args.action == "create":
-        return await rpc.call("pairing.create", dict(), new_request_id())
-    public_rpc = RpcClient(rpc.client, replace(rpc.target, token=None))
+async def handle_pair_create(args, rt: CliRuntime):
+    _ = args
+    return await rt.rpc.call("pairing.create", dict(), rt.new_request_id())
+
+
+async def handle_pair_claim(args, rt: CliRuntime):
+    public_rpc = RpcClient(rt.rpc.client, replace(rt.target, token=None))
     params = dict(code=args.code, name=args.name)
-    return await public_rpc.call("pairing.claim", params, new_request_id())
+    return await public_rpc.call("pairing.claim", params, rt.new_request_id())
 
 
-async def execute_token(args, rpc):
-    if args.action == "list":
-        return await rpc.call("token.list", dict())
-    if args.action == "revoke":
-        params = dict(token_id=args.token_id)
-        return await rpc.call("token.revoke", params, new_request_id())
+async def handle_token_list(args, rt: CliRuntime):
+    _ = args
+    return await rt.rpc.call("token.list", dict())
+
+
+async def handle_token_revoke(args, rt: CliRuntime):
+    return await rt.rpc.call(
+        "token.revoke", dict(token_id=args.token_id), rt.new_request_id()
+    )
+
+
+async def handle_token_create(args, rt: CliRuntime):
     scopes = [value for value in args.scopes.split(",") if value]
     params = dict(kind=args.kind, label=args.label, scopes=scopes)
-    return await rpc.call("token.create", params, new_request_id())
+    return await rt.rpc.call("token.create", params, rt.new_request_id())
 
 
-async def execute_agent(args, rpc):
-    if args.action == "list":
-        return await rpc.call("agent.list", dict())
-    if args.action == "revoke":
-        params = dict(agent_id=args.agent_id)
-        return await rpc.call("agent.revoke", params, new_request_id())
+async def handle_agent_list(args, rt: CliRuntime):
+    _ = args
+    return await rt.rpc.call("agent.list", dict())
+
+
+async def handle_agent_revoke(args, rt: CliRuntime):
+    return await rt.rpc.call(
+        "agent.revoke", dict(agent_id=args.agent_id), rt.new_request_id()
+    )
+
+
+async def handle_agent_set(args, rt: CliRuntime):
     params = dict(
         agent_id=args.agent_id,
         name=args.name or args.agent_id,
         endpoint_url=args.url,
         credential=args.key,
     )
-    return await rpc.call("agent.set", params, new_request_id())
+    return await rt.rpc.call("agent.set", params, rt.new_request_id())
 
 
 def new_request_id():
@@ -228,13 +254,15 @@ def load_config(env):
             allow_http_loopback=env.get("POCKET_ALLOW_HTTP_LOOPBACK") == "true",
         )
     except KeyError as error:
-        raise CliError("Missing configuration: %s" % str(error.args[0]))
+        raise CliError(
+            "Missing configuration: %s" % str(error.args[0])
+        ) from error
     if not settings.bootstrap_key:
         raise CliError("POCKET_BOOTSTRAP_KEY must not be empty")
     try:
         encryption_key(settings.secret_key)
     except (ValueError, TypeError) as error:
-        raise CliError(str(error))
+        raise CliError(str(error)) from error
     return settings
 
 
@@ -242,7 +270,7 @@ def main():
     env = dict(os.environ)  # bits:allow(BCS011): 进程入口读取环境变量
     args = parse_cli_args(sys.argv[1:])
     try:
-        if args.group == "serve":
+        if args.is_serve:
             settings = load_config(env)
             port = int(env.get("POCKET_PORT", "8787"))
             uvicorn.run(

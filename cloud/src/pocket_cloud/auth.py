@@ -89,17 +89,3 @@ async def authenticate_token(pool, raw_token: str | None) -> Identity | None:
         return None
     async with pool.connection() as conn:
         return await authenticate_raw_conn(conn, raw_token)
-
-
-async def authenticate_conn(conn, authorization: str | None) -> Identity | None:
-    if authorization is None or not authorization.startswith("Bearer "):
-        return None
-    return await authenticate_raw_conn(
-        conn, authorization.removeprefix("Bearer ")
-    )
-
-
-async def authenticate(pool, authorization: str | None) -> Identity | None:
-    if authorization is None or not authorization.startswith("Bearer "):
-        return None
-    return await authenticate_token(pool, authorization.removeprefix("Bearer "))

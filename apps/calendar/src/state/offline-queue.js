@@ -111,6 +111,19 @@ function upsertMutation(queue, entry, receiptPolicy) {
   return { mutations: nextMuts, receipts: nextReceipts };
 }
 
+function prepareQueuedSaveParams(queue, target, params, existing) {
+  const prev = findQueuedMutation(queue, target.entityType, target.entityId);
+  const createdOffline = !existing || Boolean(prev?.createdOffline);
+  const baseRev = resolveBaseRev(prev, existing);
+  const nextParams = { ...params, [target.idKey]: target.entityId };
+  if (createdOffline || baseRev === undefined) {
+    delete nextParams.base_revision;
+  } else {
+    nextParams.base_revision = baseRev;
+  }
+  return { createdOffline, baseRev, nextParams };
+}
+
 export function recordOfflineEventSave(ctx, params, existing, notify) {
   const q = normalizeOfflineQueue(ctx.state.offlineQueue);
   const optimistic = buildOptimisticEventSave(params, existing, {
@@ -118,23 +131,18 @@ export function recordOfflineEventSave(ctx, params, existing, notify) {
     source: ctx.state.identity?.source || 'local'
   });
   const eventId = optimistic.event_id;
-  const prev = findQueuedMutation(q, 'event', eventId);
-  const createdOffline = !existing || Boolean(prev?.createdOffline);
-  const baseRev = resolveBaseRev(prev, existing);
-  const rpcParams = { ...params, event_id: eventId };
-  if (createdOffline || baseRev === undefined) {
-    delete rpcParams.base_revision;
-  } else {
-    rpcParams.base_revision = baseRev;
-  }
+  const prep = prepareQueuedSaveParams(
+    q, { entityType: 'event', idKey: 'event_id', entityId: eventId },
+    params, existing
+  );
   const nextQueue = upsertMutation(q, {
     kind: 'rpc',
     method: 'event.set',
     entityType: 'event',
     entityId: eventId,
-    createdOffline,
-    serverBaseRevision: baseRev,
-    params: rpcParams,
+    createdOffline: prep.createdOffline,
+    serverBaseRevision: prep.baseRev,
+    params: prep.nextParams,
     snapshot: optimistic
   }, { dropReceipts: !isAlarmEvent(optimistic) });
   ctx.state = {
@@ -180,19 +188,14 @@ export function recordOfflineTodoSave(ctx, params, existing, notify) {
   const q = normalizeOfflineQueue(ctx.state.offlineQueue);
   const optimistic = buildOptimisticTodoSave(params, existing, 'todo');
   const todoId = optimistic.todo_id;
-  const prev = findQueuedMutation(q, 'todo', todoId);
-  const createdOffline = !existing || Boolean(prev?.createdOffline);
-  const baseRev = resolveBaseRev(prev, existing);
-  const nextParams = { ...params, todo_id: todoId };
-  if (createdOffline || baseRev === undefined) {
-    delete nextParams.base_revision;
-  } else {
-    nextParams.base_revision = baseRev;
-  }
+  const prep = prepareQueuedSaveParams(
+    q, { entityType: 'todo', idKey: 'todo_id', entityId: todoId },
+    params, existing
+  );
   const activeMe = isSchedulableMeTodo(optimistic);
-  const entry = buildTodoMutationEntry(ctx, todoId, nextParams, {
-    createdOffline,
-    baseRev,
+  const entry = buildTodoMutationEntry(ctx, todoId, prep.nextParams, {
+    createdOffline: prep.createdOffline,
+    baseRev: prep.baseRev,
     optimistic
   });
   ctx.state = {

@@ -21,8 +21,10 @@ from .sync_ws import handle_sync_ws
 async def parse_json_object(request: Request) -> dict:
     try:
         body = await request.json()
-    except ValueError:
-        raise RpcError(400, "INVALID_JSON", "Request body must be JSON")
+    except ValueError as exc:
+        raise RpcError(
+            400, "INVALID_JSON", "Request body must be JSON"
+        ) from exc
     if not isinstance(body, dict):
         raise RpcError(422, "INVALID_PARAMS", "Request body must be an object")
     return body

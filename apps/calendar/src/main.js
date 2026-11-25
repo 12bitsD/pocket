@@ -153,21 +153,18 @@ function openDialogWith(ui, kind, title, html) {
   }
 }
 
+const MODAL_SPECS = Object.freeze({
+  todo: ['todo', '新建 Todo', '编辑 Todo 与唤醒对象', buildTodoDialogHtml],
+  agent: ['agent', '绑定外部 Agent', '编辑外部 Agent', buildAgentDialogHtml],
+  event: ['event', '新建日程', '编辑日程', buildEventDialogHtml]
+});
+
 function openModalByKind(ui, kind, editId) {
-  const state = ui.store.getState();
+  const [modalKind, createTitle, editTitle, buildHtml] =
+    MODAL_SPECS[kind] || MODAL_SPECS.event;
   ui.editingId = editId || null;
-  if (kind === 'todo') {
-    const title = editId ? '编辑 Todo 与唤醒对象' : '新建 Todo';
-    openDialogWith(ui, 'todo', title, buildTodoDialogHtml(state, editId));
-    return;
-  }
-  if (kind === 'agent') {
-    const title = editId ? '编辑外部 Agent' : '绑定外部 Agent';
-    openDialogWith(ui, 'agent', title, buildAgentDialogHtml(state, editId));
-    return;
-  }
-  const title = editId ? '编辑日程' : '新建日程';
-  openDialogWith(ui, 'event', title, buildEventDialogHtml(state, editId));
+  const title = editId ? editTitle : createTitle;
+  openDialogWith(ui, modalKind, title, buildHtml(ui.store.getState(), editId));
 }
 
 function bindTopChromeListeners(ui) {

@@ -95,8 +95,10 @@ def parse_zone(timezone_name) -> tuple[str, ZoneInfo]:
     )
     try:
         return clean, ZoneInfo(clean)
-    except (ZoneInfoNotFoundError, KeyError, ValueError):
-        raise RpcError(422, "INVALID_TIMEZONE", "Unknown IANA timezone")
+    except (ZoneInfoNotFoundError, KeyError, ValueError) as exc:
+        raise RpcError(
+            422, "INVALID_TIMEZONE", "Unknown IANA timezone"
+        ) from exc
 
 
 def cron_expr_for(window: ScheduleWindow) -> str:
@@ -114,7 +116,7 @@ def cron_expr_for(window: ScheduleWindow) -> str:
 def compute_next_fire_at(
     window: ScheduleWindow, base_utc: datetime
 ) -> datetime:
-    _, zone = parse_zone(window.timezone_name)
+    zone = ZoneInfo(window.timezone_name)
     if window.schedule_kind == "once":
         hour = int(window.time_hhmm[:2])
         minute = int(window.time_hhmm[3:])

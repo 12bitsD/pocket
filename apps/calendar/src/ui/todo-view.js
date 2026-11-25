@@ -3,17 +3,12 @@ import {
   TODO_SCHEDULES,
   describeTodoStatus,
   isAgentAssignee,
+  isLocalSessionState,
   isRecurringTodo,
   isTodoActive,
   isTodoRetreated,
   summarizeTodos
 } from '../domain/todo-model.js';
-
-function isLocalSession(state) {
-  return state.isLocalDevice ?? (
-    state.mode !== 'cloud' || state.identity?.source === 'local'
-  );
-}
 
 function buildComposerWhenHtml(composer) {
   if (composer.target === 'none') {
@@ -123,7 +118,7 @@ function buildInlineTriggerFoot(item, state, lockedBlocked) {
 }
 
 function buildTodoRowHtml(item, state) {
-  const lockedBlocked = Boolean(item.locked) && !isLocalSession(state);
+  const lockedBlocked = Boolean(item.locked) && !isLocalSessionState(state);
   const desc = describeTodoStatus(item, state.todayIso);
   const dotHtml = item.assignee === 'none'
     ? ''

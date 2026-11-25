@@ -148,10 +148,20 @@ export function renderAgendaView(state, nowMs) {
   </div>`;
 }
 
-function buildMonthCellHtml(cell, state) {
-  const dayEvents = state.monthEvents.filter(
-    (ev) => ev.instance_date === cell.iso
-  );
+function groupEventsByDate(events) {
+  const byDay = new Map();
+  for (const ev of events || []) {
+    const list = byDay.get(ev.instance_date);
+    if (list) {
+      list.push(ev);
+    } else {
+      byDay.set(ev.instance_date, [ev]);
+    }
+  }
+  return byDay;
+}
+
+function buildMonthCellHtml(cell, state, dayEvents) {
   const dots = dayEvents.slice(0, 3).map((ev) => (
     `<i class="${ev.reminder_policy === 'alarm' ? 'strong' : 'normal'}"></i>`
   )).join('');
@@ -175,11 +185,12 @@ function buildMonthCellHtml(cell, state) {
 
 export function renderMonthView(state) {
   const cells = buildMonthCells(state.viewYear, state.viewMonth);
+  const byDay = groupEventsByDate(state.monthEvents);
   const monthLabel = `${state.viewYear}-${pad2(state.viewMonth + 1)}`;
-  const gridHtml = cells.map((c) => buildMonthCellHtml(c, state)).join('');
-  const selectedEvents = state.monthEvents.filter(
-    (ev) => ev.instance_date === state.selectedDate
-  );
+  const gridHtml = cells
+    .map((c) => buildMonthCellHtml(c, state, byDay.get(c.iso) || []))
+    .join('');
+  const selectedEvents = byDay.get(state.selectedDate) || [];
   const dayRows = selectedEvents
     .map((ev) => buildEventRowHtml(ev, '', ''))
     .join('');

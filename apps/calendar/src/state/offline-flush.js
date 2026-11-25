@@ -37,22 +37,17 @@ export function isReceiptEligibleInState(state, entityType, entityId) {
 }
 
 function applyLocalAlarmStatus(state, entityType, entityId, status) {
-  if (entityType === 'todo') {
-    const idx = state.todos.findIndex((t) => t.todo_id === entityId);
-    if (idx === -1 || state.todos[idx].alarm_status === status) {
-      return state;
-    }
-    const todos = [...state.todos];
-    todos[idx] = { ...todos[idx], alarm_status: status };
-    return { ...state, todos };
-  }
-  const idx = state.masterEvents.findIndex((e) => e.event_id === entityId);
-  if (idx === -1 || state.masterEvents[idx].alarm_status === status) {
+  const isTodo = entityType === 'todo';
+  const listKey = isTodo ? 'todos' : 'masterEvents';
+  const idKey = isTodo ? 'todo_id' : 'event_id';
+  const list = state[listKey];
+  const idx = list.findIndex((item) => item[idKey] === entityId);
+  if (idx === -1 || list[idx].alarm_status === status) {
     return state;
   }
-  const masterEvents = [...state.masterEvents];
-  masterEvents[idx] = { ...masterEvents[idx], alarm_status: status };
-  return { ...state, masterEvents };
+  const nextList = [...list];
+  nextList[idx] = { ...nextList[idx], alarm_status: status };
+  return { ...state, [listKey]: nextList };
 }
 
 function enqueueAlarmReceipt(ctx, rec, notify) {

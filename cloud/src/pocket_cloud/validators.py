@@ -18,8 +18,8 @@ def parse_iso_date(raw, field_name: str) -> date:
         raise RpcError(422, "INVALID_DATE", msg)
     try:
         return date.fromisoformat(raw)
-    except ValueError:
-        raise RpcError(422, "INVALID_DATE", msg)
+    except ValueError as exc:
+        raise RpcError(422, "INVALID_DATE", msg) from exc
 
 
 def parse_hhmm(raw, field_name: str) -> str:

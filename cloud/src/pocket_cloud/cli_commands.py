@@ -53,6 +53,7 @@ def add_domain_parsers(groups, json_parent) -> None:
     add_todo_parsers(groups, json_parent)
     trigger = groups.add_parser("trigger", parents=[json_parent])
     trigger.add_argument("todo_id")
+    trigger.set_defaults(handler=handle_trigger)
 
 
 def add_event_parsers(groups, json_parent) -> None:
@@ -62,6 +63,7 @@ def add_event_parsers(groups, json_parent) -> None:
     list_parser = event.add_parser("list", parents=[json_parent])
     list_parser.add_argument("--from", dest="start_date")
     list_parser.add_argument("--to", dest="end_date")
+    list_parser.set_defaults(handler=handle_event_list)
     add_parser = event.add_parser("add", parents=[json_parent])
     add_parser.add_argument("--date", required=True)
     add_parser.add_argument("--start", required=True)
@@ -75,25 +77,32 @@ def add_event_parsers(groups, json_parent) -> None:
         "--reminder", default="notify", choices=list(REMINDER_POLICIES)
     )
     add_parser.add_argument("--offset", type=int, default=15)
+    add_parser.set_defaults(handler=handle_event_add)
     delete_parser = event.add_parser("delete", parents=[json_parent])
     delete_parser.add_argument("event_id")
+    delete_parser.set_defaults(handler=handle_event_delete)
 
 
 def add_todo_parsers(groups, json_parent) -> None:
     todo = groups.add_parser("todo").add_subparsers(
         dest="action", required=True
     )
-    todo.add_parser("list", parents=[json_parent])
+    todo.add_parser("list", parents=[json_parent]).set_defaults(
+        handler=handle_todo_list
+    )
     add_parser = todo.add_parser("add", parents=[json_parent])
     add_parser.add_argument("text")
     add_parser.add_argument("--schedule", choices=list(SCHEDULE_KINDS))
     add_parser.add_argument("--date")
     add_parser.add_argument("--dow", type=int)
     add_parser.add_argument("--tz", default="Asia/Shanghai")
+    add_parser.set_defaults(handler=handle_todo_add)
     toggle_parser = todo.add_parser("toggle", parents=[json_parent])
     toggle_parser.add_argument("todo_id")
+    toggle_parser.set_defaults(handler=handle_todo_toggle)
     delete_parser = todo.add_parser("delete", parents=[json_parent])
     delete_parser.add_argument("todo_id")
+    delete_parser.set_defaults(handler=handle_todo_delete)
 
 
 def strip_matched_span(raw_text: str, match) -> str:
@@ -139,17 +148,13 @@ def default_end_date(start: str) -> str:
         return start
 
 
-async def execute_event(args, rpc, new_request_id) -> dict:
-    if args.action == "list":
-        start = args.start_date or date.today().isoformat()
-        end = args.end_date or default_end_date(start)
-        return await rpc.call(
-            "event.list", dict(start_date=start, end_date=end)
-        )
-    if args.action == "delete":
-        return await rpc.call(
-            "event.delete", dict(event_id=args.event_id), new_request_id()
-        )
+async def handle_event_list(args, rt) -> dict:
+    start = args.start_date or date.today().isoformat()
+    end = args.end_date or default_end_date(start)
+    return await rt.rpc.call("event.list", dict(start_date=start, end_date=end))
+
+
+async def handle_event_add(args, rt) -> dict:
     params = dict(
         event_date=args.date,
         start_hhmm=args.start,
@@ -160,31 +165,41 @@ async def execute_event(args, rpc, new_request_id) -> dict:
         reminder_policy=args.reminder,
         reminder_offset_minutes=args.offset,
     )
-    return await rpc.call("event.set", params, new_request_id())
+    return await rt.rpc.call("event.set", params, rt.new_request_id())
 
 
-async def execute_todo(args, rpc, new_request_id) -> dict:
-    if args.action == "list":
-        return await rpc.call("todo.list", dict())
-    if args.action == "toggle":
-        return await rpc.call(
-            "todo.toggle", dict(todo_id=args.todo_id), new_request_id()
-        )
-    if args.action == "delete":
-        return await rpc.call(
-            "todo.delete", dict(todo_id=args.todo_id), new_request_id()
-        )
-    payload = parse_inline_todo(args)
-    return await rpc.call("todo.set", payload, new_request_id())
+async def handle_event_delete(args, rt) -> dict:
+    return await rt.rpc.call(
+        "event.delete", dict(event_id=args.event_id), rt.new_request_id()
+    )
 
 
-async def execute_domain(args, rpc, new_request_id) -> dict:
-    if args.group == "event":
-        return await execute_event(args, rpc, new_request_id)
-    if args.group == "todo":
-        return await execute_todo(args, rpc, new_request_id)
-    return await rpc.call(
-        "todo.trigger", dict(todo_id=args.todo_id), new_request_id()
+async def handle_todo_list(args, rt) -> dict:
+    _ = args
+    return await rt.rpc.call("todo.list", dict())
+
+
+async def handle_todo_add(args, rt) -> dict:
+    return await rt.rpc.call(
+        "todo.set", parse_inline_todo(args), rt.new_request_id()
+    )
+
+
+async def handle_todo_toggle(args, rt) -> dict:
+    return await rt.rpc.call(
+        "todo.toggle", dict(todo_id=args.todo_id), rt.new_request_id()
+    )
+
+
+async def handle_todo_delete(args, rt) -> dict:
+    return await rt.rpc.call(
+        "todo.delete", dict(todo_id=args.todo_id), rt.new_request_id()
+    )
+
+
+async def handle_trigger(args, rt) -> dict:
+    return await rt.rpc.call(
+        "todo.trigger", dict(todo_id=args.todo_id), rt.new_request_id()
     )
 
 

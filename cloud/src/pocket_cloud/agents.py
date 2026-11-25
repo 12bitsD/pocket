@@ -92,7 +92,6 @@ def validate_endpoint(settings, endpoint_url) -> None:
 
 
 async def ensure_active_agent(conn, agent_id: str) -> tuple[str, str]:
-    validate_agent_id(agent_id)
     cursor = await conn.execute(
         """
         SELECT active, endpoint_url, credential_ciphertext
@@ -131,7 +130,8 @@ async def list_agents(ctx, conn, identity, params):
 
 async def revoke_agent(ctx, conn, identity, params):
     agent_id = params.get("agent_id")
-    validate_agent_id(agent_id)
+    if not isinstance(agent_id, str) or not agent_id:
+        raise RpcError(404, "AGENT_NOT_FOUND", "Agent not found")
     cursor = await conn.execute(
         """
         UPDATE agents SET active = FALSE, updated_at = now()

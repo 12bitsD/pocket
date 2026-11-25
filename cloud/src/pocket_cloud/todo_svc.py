@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from psycopg.rows import dict_row
 
-from .agents import ensure_active_agent
+from .agents import ensure_active_agent, validate_agent_id
 from .errors import RpcError
 from .sync_log import log_delete, log_upsert
 from .todo_cron import (
@@ -133,13 +133,11 @@ async def fetch_todo_dict(conn, todo_id: str) -> dict | None:
         return await cur.fetchone()
 
 
-async def validate_assignee(conn, assignee) -> str:
-    if not isinstance(assignee, str):
-        raise RpcError(422, "INVALID_ASSIGNEE", "Invalid todo assignee")
+async def validate_assignee(conn, assignee) -> None:
     if assignee in ("none", "@me"):
-        return assignee
+        return
+    validate_agent_id(assignee)
     await ensure_active_agent(conn, assignee)
-    return assignee
 
 
 def should_cancel_pending(existing: dict, spec: TodoSpec) -> bool:

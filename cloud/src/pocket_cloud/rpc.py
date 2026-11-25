@@ -172,7 +172,9 @@ async def dispatch(ctx, method, body, authorization):
         return await dispatch_write(ctx, req)
     except PairingAttemptFailed as error:
         await register_failed_attempt(ctx.pool, error.code_id, ctx.clock())
-        raise RpcError(401, "INVALID_PAIRING_CODE", "Pairing code is invalid")
+        raise RpcError(
+            401, "INVALID_PAIRING_CODE", "Pairing code is invalid"
+        ) from error
 
 
 async def call_handler(call: Call, conn):

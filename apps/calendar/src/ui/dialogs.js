@@ -3,6 +3,7 @@ import { addDaysIso, DOW_LABELS, escapeHtml } from '../domain/date-time.js';
 import {
   TODO_SCHEDULES,
   isAgentAssignee,
+  isLocalSessionState,
   isRecurringTodo,
   todoScheduleUiValue
 } from '../domain/todo-model.js';
@@ -166,13 +167,6 @@ function buildTodoTargets(state, targetVal) {
   ];
 }
 
-function resolveDialogLocalFlag(state) {
-  if (state.isLocalDevice !== undefined) {
-    return Boolean(state.isLocalDevice);
-  }
-  return state.mode !== 'cloud' || state.identity?.source === 'local';
-}
-
 function formatLockAttrs(locked, isLocal) {
   return [locked ? 'checked' : '', isLocal ? '' : 'disabled']
     .filter(Boolean)
@@ -183,7 +177,7 @@ function prepareTodoDialogSpec(state, editId) {
   const existing = editId
     ? state.todos.find((t) => t.todo_id === String(editId))
     : null;
-  const isLocal = resolveDialogLocalFlag(state);
+  const isLocal = isLocalSessionState(state);
   const lockedBlocked = Boolean(existing?.locked) && !isLocal;
   const targetVal = existing ? existing.assignee : '@me';
   const dowVal = existing?.weekly_dow ?? 5;

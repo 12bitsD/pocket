@@ -36,11 +36,12 @@ class AlarmRingingService : Service() {
         val key = intent?.getStringExtra(ExactAlarmScheduler.EXTRA_ALARM_KEY)
         when (intent?.action) {
             ACTION_START_RINGING -> handleStartCommand(intent, key)
-            ACTION_DISMISS_RINGING -> handleCompleteCommand(
-                key ?: activeAlarmKey,
-                EVENT_DISMISSED
-            )
-            ACTION_SNOOZE_RINGING -> handleSnoozeCommand(key ?: activeAlarmKey)
+            ACTION_DISMISS_RINGING -> finishAlarmCommand(
+                key ?: activeAlarmKey
+            ) { persistRingOutcome(it, EVENT_DISMISSED) }
+            ACTION_SNOOZE_RINGING -> finishAlarmCommand(
+                key ?: activeAlarmKey
+            ) { persistSnooze(it) }
         }
         return START_NOT_STICKY
     }
@@ -65,25 +66,17 @@ class AlarmRingingService : Service() {
         startRingingSession(key, title, subtitle)
     }
 
-    private fun handleCompleteCommand(key: String?, eventKind: String) {
-        if (key != null) {
-            persistRingOutcome(key, eventKind)
-            if (activeAlarmKey == null || activeAlarmKey == key) {
-                stopRingingAndFinish(key)
-            }
-        } else {
+    private fun finishAlarmCommand(
+        key: String?,
+        persist: (String) -> Unit
+    ) {
+        if (key == null) {
             stopRingingAndFinish(null)
+            return
         }
-    }
-
-    private fun handleSnoozeCommand(key: String?) {
-        if (key != null) {
-            persistSnooze(key)
-            if (activeAlarmKey == null || activeAlarmKey == key) {
-                stopRingingAndFinish(key)
-            }
-        } else {
-            stopRingingAndFinish(null)
+        persist(key)
+        if (activeAlarmKey == null || activeAlarmKey == key) {
+            stopRingingAndFinish(key)
         }
     }
 
@@ -174,12 +167,8 @@ class AlarmRingingService : Service() {
     }
 
     private fun handleUnansweredTimeout() {
-        val key = activeAlarmKey
-        if (key != null) {
-            persistRingOutcome(key, EVENT_MISSED)
-            stopRingingAndFinish(key)
-        } else {
-            stopRingingAndFinish(null)
+        finishAlarmCommand(activeAlarmKey) {
+            persistRingOutcome(it, EVENT_MISSED)
         }
     }
 

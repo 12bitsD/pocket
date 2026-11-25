@@ -53,6 +53,14 @@ export function isAgentAssignee(assignee) {
   );
 }
 
+export function isLocalSessionState(state) {
+  return Boolean(
+    state.isLocalDevice ?? (
+      state.mode !== 'cloud' || state.identity?.source === 'local'
+    )
+  );
+}
+
 export function cronExpressionForTodo(todo) {
   const [hh, mm] = String(todo.time_hhmm || '09:00').split(':').map(Number);
   let dow = '*';

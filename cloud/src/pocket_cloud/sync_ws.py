@@ -39,15 +39,6 @@ def parse_json_frame(raw: str) -> dict | None:
     return parsed
 
 
-async def is_token_active(pool, token_id: str) -> bool:
-    async with pool.connection() as conn:
-        cursor = await conn.execute(
-            "SELECT 1 FROM tokens WHERE token_id = %s AND revoked_at IS NULL",
-            (token_id,),
-        )
-        return (await cursor.fetchone()) is not None
-
-
 async def dispatch_client_dict(ctx, identity, msg: dict) -> dict:
     msg_type = msg.get("type")
     if msg_type == "ALARM_RECEIPT":

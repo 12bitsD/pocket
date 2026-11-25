@@ -35,15 +35,10 @@ class DirectBootAlarmStore private constructor(deviceCtx: Context) {
         if (keys.isEmpty()) {
             return
         }
-        val db = dbHelper.writableDatabase
-        db.beginTransaction()
-        try {
+        inTransaction { db ->
             for (key in keys) {
                 db.delete(TABLE_ALARMS, "alarm_key = ?", arrayOf(key))
             }
-            db.setTransactionSuccessful()
-        } finally {
-            db.endTransaction()
         }
     }
 
@@ -96,10 +91,8 @@ class DirectBootAlarmStore private constructor(deviceCtx: Context) {
 
     @Synchronized
     fun drainRingingEvents(): List<RingingEventRecord> {
-        val db = dbHelper.writableDatabase
-        val drained = mutableListOf<RingingEventRecord>()
-        db.beginTransaction()
-        try {
+        return inTransaction { db ->
+            val drained = mutableListOf<RingingEventRecord>()
             db.query(
                 TABLE_RINGING_EVENTS,
                 null,
@@ -114,11 +107,20 @@ class DirectBootAlarmStore private constructor(deviceCtx: Context) {
                 }
             }
             db.delete(TABLE_RINGING_EVENTS, null, null)
+            drained
+        }
+    }
+
+    private fun <T> inTransaction(block: (SQLiteDatabase) -> T): T {
+        val db = dbHelper.writableDatabase
+        db.beginTransaction()
+        try {
+            val result = block(db)
             db.setTransactionSuccessful()
+            return result
         } finally {
             db.endTransaction()
         }
-        return drained
     }
 
     private fun queryAlarms(
@@ -206,34 +208,46 @@ class DirectBootAlarmStore private constructor(deviceCtx: Context) {
     }
 
     private fun ContentValues.putNullableStr(key: String, value: String?) {
-        if (value != null) put(key, value) else putNull(key)
+        if (value != null) {
+            put(key, value)
+        } else {
+            putNull(key)
+        }
     }
 
     private fun ContentValues.putNullableInt(key: String, value: Int?) {
-        if (value != null) put(key, value) else putNull(key)
+        if (value != null) {
+            put(key, value)
+        } else {
+            putNull(key)
+        }
     }
 
     private fun ContentValues.putNullableLong(key: String, value: Long?) {
-        if (value != null) put(key, value) else putNull(key)
+        if (value != null) {
+            put(key, value)
+        } else {
+            putNull(key)
+        }
     }
 
     private fun Cursor.reqStr(col: String): String =
         getString(getColumnIndexOrThrow(col))
 
-    private fun Cursor.optStr(col: String): String? {
+    private fun <T> Cursor.optCol(col: String, read: (Int) -> T): T? {
         val idx = getColumnIndexOrThrow(col)
-        return if (isNull(idx)) null else getString(idx)
+        return if (isNull(idx)) {
+            null
+        } else {
+            read(idx)
+        }
     }
 
-    private fun Cursor.optInt(col: String): Int? {
-        val idx = getColumnIndexOrThrow(col)
-        return if (isNull(idx)) null else getInt(idx)
-    }
+    private fun Cursor.optStr(col: String): String? = optCol(col, ::getString)
 
-    private fun Cursor.optLong(col: String): Long? {
-        val idx = getColumnIndexOrThrow(col)
-        return if (isNull(idx)) null else getLong(idx)
-    }
+    private fun Cursor.optInt(col: String): Int? = optCol(col, ::getInt)
+
+    private fun Cursor.optLong(col: String): Long? = optCol(col, ::getLong)
 
     private class Helper(context: Context) :
         SQLiteOpenHelper(context, DB_NAME, null, DB_VERSION) {

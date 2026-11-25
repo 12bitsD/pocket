@@ -77,13 +77,6 @@ async def apply_past_due_me_todos(
             await sync_todo_snapshot(tx, row[0])
 
 
-async def expire_past_due_me_todos(ctx) -> None:
-    now = ctx.clock()
-    async with ctx.pool.connection() as conn:
-        due_pairs = await find_past_due_me_todos(conn, now)
-    await apply_past_due_me_todos(ctx, due_pairs)
-
-
 def parse_alarm_receipt(msg: dict) -> AlarmReceipt:
     entity_type = msg.get("entity_type")
     if entity_type not in RECEIPT_ENTITIES:

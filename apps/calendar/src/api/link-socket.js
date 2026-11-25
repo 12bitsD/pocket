@@ -39,19 +39,36 @@ export function closeRawSocket(ws) {
   return closed;
 }
 
+function clearReconnectTimer(ctx) {
+  clearTimeout(ctx.timer);
+  ctx.timer = null;
+}
+
+function detachActiveSocket(ctx) {
+  const active = ctx.ws;
+  ctx.ws = null;
+  ctx.ready = false;
+  return closeRawSocket(active);
+}
+
+function resumeSocketNow(ctx, makeError, buildWsUrl) {
+  clearReconnectTimer(ctx);
+  ctx.attempt = 0;
+  ctx.onStatusChange?.({ status: 'connecting' });
+  openLinkSocket(ctx, makeError, buildWsUrl).catch((err) => {
+    ctx.lastError = err;
+  });
+}
+
 function enterBackgroundSuspend(ctx) {
   const session = ctx.getSession();
   if (ctx.stopped || ctx.revoked || ctx.suspended ||
       !session.baseUrl || !session.token) {
     return;
   }
-  clearTimeout(ctx.timer);
-  ctx.timer = null;
+  clearReconnectTimer(ctx);
   ctx.suspended = true;
-  ctx.ready = false;
-  const active = ctx.ws;
-  ctx.ws = null;
-  closeRawSocket(active);
+  detachActiveSocket(ctx);
   ctx.onStatusChange?.({ status: 'suspended' });
 }
 
@@ -124,8 +141,7 @@ export function scheduleSocketReconnect(ctx, makeError, buildWsUrl) {
   if (ctx.stopped || ctx.revoked || ctx.suspended) {
     return;
   }
-  clearTimeout(ctx.timer);
-  ctx.timer = null;
+  clearReconnectTimer(ctx);
   if (ctx.netOffline) {
     ctx.onStatusChange?.({ status: 'offline' });
     return;
@@ -155,8 +171,7 @@ function handleSocketClose(ctx, ws, event, deps) {
   rejectAllPending(ctx, deps.makeError(503, 'WS_CLOSED', 'Link closed'));
   if (code === 4401 || code === 4403) {
     ctx.revoked = true;
-    clearTimeout(ctx.timer);
-    ctx.timer = null;
+    clearReconnectTimer(ctx);
     const err = deps.makeError(401, 'AUTH_REVOKED', 'Session revoked');
     ctx.onStatusChange?.({ status: 'revoked', code });
     deps.handshake.reject(err);
@@ -226,16 +241,12 @@ export function openLinkSocket(ctx, makeError, buildWsUrl) {
     return Promise.resolve(null);
   }
   if (ctx.ws) {
-    const prev = ctx.ws;
-    ctx.ws = null;
-    ctx.ready = false;
-    closeRawSocket(prev);
+    detachActiveSocket(ctx);
   }
   ctx.stopped = false;
   ctx.revoked = false;
   ctx.suspended = false;
-  clearTimeout(ctx.timer);
-  ctx.timer = null;
+  clearReconnectTimer(ctx);
   const sentLastSeq = Math.max(0, Math.trunc(Number(session.lastSeq || 0)));
   const ws = new ctx.WebSocketImpl(buildWsUrl(session.baseUrl));
   ctx.ws = ws;
@@ -251,18 +262,13 @@ export function disconnectLinkSocket(ctx, makeError) {
   ctx.stopped = true;
   ctx.suspended = false;
   ctx.wantSuspend = false;
-  ctx.ready = false;
-  clearTimeout(ctx.timer);
-  ctx.timer = null;
+  clearReconnectTimer(ctx);
   rejectAllPending(ctx, makeError(499, 'DISCONNECTED', 'Disconnected'));
-  const active = ctx.ws;
-  ctx.ws = null;
-  return closeRawSocket(active);
+  return detachActiveSocket(ctx);
 }
 
 function enterOfflineMode(ctx, makeError) {
-  clearTimeout(ctx.timer);
-  ctx.timer = null;
+  clearReconnectTimer(ctx);
   if (ctx.ws) {
     const active = ctx.ws;
     ctx.ws = null;
@@ -285,13 +291,7 @@ function applyOfflinePatch(ctx, offline, makeError, buildWsUrl) {
   const canResume = wasOffline && !ctx.stopped && !ctx.revoked &&
     !ctx.suspended && !ctx.ws;
   if (canResume) {
-    clearTimeout(ctx.timer);
-    ctx.timer = null;
-    ctx.attempt = 0;
-    ctx.onStatusChange?.({ status: 'connecting' });
-    openLinkSocket(ctx, makeError, buildWsUrl).catch((err) => {
-      ctx.lastError = err;
-    });
+    resumeSocketNow(ctx, makeError, buildWsUrl);
   }
 }
 
@@ -304,8 +304,7 @@ export function setLinkPowerState(ctx, patch, makeError, buildWsUrl) {
   }
   ctx.wantSuspend = patch.hidden;
   if (patch.hidden) {
-    clearTimeout(ctx.timer);
-    ctx.timer = null;
+    clearReconnectTimer(ctx);
     if (ctx.pendingAcks.length === 0) {
       enterBackgroundSuspend(ctx);
     }
@@ -322,11 +321,7 @@ export function setLinkPowerState(ctx, patch, makeError, buildWsUrl) {
     ctx.onStatusChange?.({ status: 'offline' });
     return;
   }
-  ctx.attempt = 0;
-  ctx.onStatusChange?.({ status: 'connecting' });
-  openLinkSocket(ctx, makeError, buildWsUrl).catch((err) => {
-    ctx.lastError = err;
-  });
+  resumeSocketNow(ctx, makeError, buildWsUrl);
 }
 
 export function sendLinkFrame(ctx, frame, makeError, buildWsUrl) {
@@ -344,9 +339,7 @@ export function sendLinkFrame(ctx, frame, makeError, buildWsUrl) {
         ctx.pendingAcks.splice(idx, 1);
       }
       if (ctx.ws === activeWs) {
-        ctx.ws = null;
-        ctx.ready = false;
-        closeRawSocket(activeWs);
+        detachActiveSocket(ctx);
         rejectAllPending(ctx, makeError(504, 'WS_TIMEOUT', 'Ack timed out'));
         if (ctx.wantSuspend) {
           enterBackgroundSuspend(ctx);

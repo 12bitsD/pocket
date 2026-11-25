@@ -151,6 +151,16 @@ async function runResetResync(ctx, ack, epoch, notify) {
   }
 }
 
+function trackPendingHelloTask(ctx, promise) {
+  const task = promise.finally(() => {
+    if (ctx.pendingHelloTask === task) {
+      ctx.pendingHelloTask = null;
+    }
+  });
+  ctx.pendingHelloTask = task;
+  return task;
+}
+
 export function handleHelloAckSession(ctx, ack, notify) {
   if (ctx.state.mode !== 'cloud' || !ctx.state.identity) {
     return Promise.resolve();
@@ -159,14 +169,9 @@ export function handleHelloAckSession(ctx, ack, notify) {
   ctx.expectStaleCheck = true;
   ctx.helloCursor = null;
   if (isReset) {
-    const epoch = ctx.sessionEpoch;
-    const task = runResetResync(ctx, ack, epoch, notify).finally(() => {
-      if (ctx.pendingHelloTask === task) {
-        ctx.pendingHelloTask = null;
-      }
-    });
-    ctx.pendingHelloTask = task;
-    return task;
+    return trackPendingHelloTask(
+      ctx, runResetResync(ctx, ack, ctx.sessionEpoch, notify)
+    );
   }
   const baseState = {
     ...ctx.state,
@@ -177,13 +182,7 @@ export function handleHelloAckSession(ctx, ack, notify) {
     applySyncBatch(baseState, ack.catchupFrames || [])
   );
   notify(ctx);
-  const flushTask = flushOfflineQueue(ctx, notify).finally(() => {
-    if (ctx.pendingHelloTask === flushTask) {
-      ctx.pendingHelloTask = null;
-    }
-  });
-  ctx.pendingHelloTask = flushTask;
-  return flushTask;
+  return trackPendingHelloTask(ctx, flushOfflineQueue(ctx, notify));
 }
 
 export async function claimPairingSession(ctx, opts, notify, getPublic) {

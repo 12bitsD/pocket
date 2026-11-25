@@ -17,6 +17,6 @@ jobs:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
       - name: Install bits
-        run: cargo install --git https://github.com/12bitsD/bits-style --tag v0.3.5 --locked
+        run: cargo install --git https://github.com/12bitsD/bits-style --tag v0.5.0 --locked
       - name: Check changed code
         run: bits style check --diff --commit origin/main

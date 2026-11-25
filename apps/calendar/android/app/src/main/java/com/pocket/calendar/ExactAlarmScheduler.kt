@@ -53,7 +53,9 @@ object ExactAlarmScheduler {
     ): ArmedStatus {
         val am = context.getSystemService(AlarmManager::class.java)
             ?: return ArmedStatus.FAILED
-        if (!canScheduleExact(context)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !am.canScheduleExactAlarms()
+        ) {
             return ArmedStatus.FAILED
         }
         val reqCode = requestCodeFor(record.alarmKey)
@@ -95,6 +97,26 @@ object ExactAlarmScheduler {
         }
     }
 
+    private fun armOrCancel(
+        context: Context,
+        record: AlarmRecord,
+        triggerMs: Long?,
+        failOnMissingPerm: Boolean
+    ): Pair<ArmedStatus, Long?> {
+        if (triggerMs == null) {
+            cancelAlarm(context, record.alarmKey)
+            val status = if (failOnMissingPerm && !canScheduleExact(context)) {
+                ArmedStatus.FAILED
+            } else {
+                ArmedStatus.EXPIRED
+            }
+            return status to null
+        }
+        val status = scheduleAlarm(context, record, triggerMs)
+        val stored = if (status == ArmedStatus.EXECUTED) triggerMs else null
+        return status to stored
+    }
+
     fun reconcileAlarm(
         context: Context,
         store: DirectBootAlarmStore,
@@ -116,22 +138,12 @@ object ExactAlarmScheduler {
             )
         }
         val nextSkip = record.skipNext && !computed.skipConsumed
-        val triggerMs = computed.triggerAtMs
-        val status = if (triggerMs != null) {
-            scheduleAlarm(context, record, triggerMs)
-        } else {
-            cancelAlarm(context, record.alarmKey)
-            if (canScheduleExact(context)) {
-                ArmedStatus.EXPIRED
-            } else {
-                ArmedStatus.FAILED
-            }
-        }
-        val storedTrigger = if (status == ArmedStatus.EXECUTED) {
-            triggerMs
-        } else {
-            null
-        }
+        val (status, storedTrigger) = armOrCancel(
+            context,
+            record,
+            computed.triggerAtMs,
+            failOnMissingPerm = true
+        )
         store.upsertAlarm(
             record.copy(
                 skipNext = nextSkip,
@@ -170,13 +182,12 @@ object ExactAlarmScheduler {
             clean,
             nowMs + 1_000L
         )
-        val status = if (nextMs != null) {
-            scheduleAlarm(context, clean, nextMs)
-        } else {
-            cancelAlarm(context, record.alarmKey)
-            ArmedStatus.EXPIRED
-        }
-        val stored = if (status == ArmedStatus.EXECUTED) nextMs else null
+        val (_, stored) = armOrCancel(
+            context,
+            clean,
+            nextMs,
+            failOnMissingPerm = false
+        )
         store.updateScheduleState(
             record.alarmKey,
             ScheduleStatePatch(

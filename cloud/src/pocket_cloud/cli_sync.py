@@ -19,6 +19,9 @@ def add_sync_parsers(groups, json_parent) -> None:
     watch = sync.add_parser("watch", parents=[json_parent])
     watch.add_argument("--from-seq", dest="from_seq", type=int, default=0)
     watch.add_argument("--limit", type=int, default=None)
+    watch.set_defaults(
+        handler=execute_sync_watch, uses_http=False, is_watch=True
+    )
 
     ack = sync.add_parser("ack", parents=[json_parent])
     ack.add_argument("entity_id")
@@ -28,6 +31,7 @@ def add_sync_parsers(groups, json_parent) -> None:
     ack.add_argument(
         "--entity", choices=list(SYNC_ENTITY_CHOICES), default=None
     )
+    ack.set_defaults(handler=execute_sync_ack, uses_http=False)
 
 
 def build_ws_url(base_url: str) -> str:
@@ -88,16 +92,12 @@ def format_sync_push_line(frame: dict) -> str:
 
 
 async def recv_ws_frame(ws) -> dict:
-    raw = None
-    err_msg = None
     try:
         raw = await ws.recv()
     except ConnectionClosed as exc:
-        err_msg = format_ws_closed(exc)
+        raise CliError(format_ws_closed(exc)) from exc
     except (WebSocketException, OSError) as exc:
-        err_msg = "WebSocket error: %s" % str(exc)
-    if err_msg is not None:
-        raise CliError(err_msg)
+        raise CliError("WebSocket error: %s" % str(exc)) from exc
     text = raw.decode() if isinstance(raw, bytes) else raw
     frame = json.loads(text)
     if frame.get("type") == "ERROR":
@@ -113,19 +113,16 @@ async def open_sync_ws(target, last_seq: int):
     connect_fn = target.ws_connect or websockets.connect
     url = build_ws_url(target.base_url)
     hello = dict(type="HELLO", token=target.token, last_seq=last_seq)
-    err_msg = None
     try:
         async with connect_fn(url) as ws:
             await ws.send(json.dumps(hello))
             yield ws
     except ConnectionClosed as exc:
-        err_msg = format_ws_closed(exc)
-    except TimeoutError:
-        err_msg = "WebSocket request timed out"
+        raise CliError(format_ws_closed(exc)) from exc
+    except TimeoutError as exc:
+        raise CliError("WebSocket request timed out") from exc
     except (WebSocketException, OSError) as exc:
-        err_msg = "WebSocket connection failed: %s" % str(exc)
-    if err_msg is not None:
-        raise CliError(err_msg)
+        raise CliError("WebSocket connection failed: %s" % str(exc)) from exc
 
 
 async def watch_session(ws, args) -> dict:
@@ -156,18 +153,16 @@ async def watch_session(ws, args) -> dict:
     return dict(latest_seq=latest_seq, replayed=replayed, frames=frames)
 
 
-async def execute_sync_watch(args, target) -> dict:
+async def execute_sync_watch(args, rt) -> dict:
     if args.from_seq < 0:
         raise CliError("--from-seq must be >= 0")
     if args.limit is not None and args.limit < 0:
         raise CliError("--limit must be >= 0")
-    result = None
-    async with open_sync_ws(target, args.from_seq) as ws:
-        result = await watch_session(ws, args)
-    return result
+    async with open_sync_ws(rt.target, args.from_seq) as ws:
+        return await watch_session(ws, args)
 
 
-async def execute_sync_ack(args, target) -> dict:
+async def execute_sync_ack(args, rt) -> dict:
     entity_type = infer_entity_type(args.entity_id, args.entity)
     receipt = dict(
         type="ALARM_RECEIPT",
@@ -175,18 +170,10 @@ async def execute_sync_ack(args, target) -> dict:
         entity_id=args.entity_id,
         status=args.status,
     )
-    ack_frame = None
     async with asyncio.timeout(10.0):
-        async with open_sync_ws(target, SKIP_REPLAY_SEQ) as ws:
+        async with open_sync_ws(rt.target, SKIP_REPLAY_SEQ) as ws:
             await ws.send(json.dumps(receipt))
-            while ack_frame is None:
+            while True:
                 frame = await recv_ws_frame(ws)
                 if frame.get("type") == "RECEIPT_ACK":
-                    ack_frame = frame
-    return ack_frame
-
-
-async def execute_sync(args, target) -> dict:
-    if args.action == "watch":
-        return await execute_sync_watch(args, target)
-    return await execute_sync_ack(args, target)
+                    return frame

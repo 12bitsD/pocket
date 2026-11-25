@@ -142,36 +142,39 @@ function applyDateShortcutClick(ui, form, event) {
   return true;
 }
 
+const DELETE_SPECS = Object.freeze({
+  event: Object.freeze({
+    listKey: 'masterEvents',
+    idKey: 'event_id',
+    removeKey: 'removeEvent',
+    saveKey: 'saveEvent',
+    label: '日程已删除'
+  }),
+  todo: Object.freeze({
+    listKey: 'todos',
+    idKey: 'todo_id',
+    removeKey: 'removeTodo',
+    saveKey: 'saveTodo',
+    label: 'Todo 已删除'
+  })
+});
+
 function handleDeleteWithUndo(ui, kind, closeDialog, btn) {
+  const spec = DELETE_SPECS[kind] || DELETE_SPECS.todo;
   const st = ui.store.getState();
-  if (kind === 'event') {
-    const snap = st.masterEvents.find((e) => e.event_id === ui.editingId);
-    const call = ui.store.removeEvent(ui.editingId);
-    runSafely(ui, call, '', {
-      trigger: btn,
-      onOk: () => {
-        closeDialog();
-        if (snap) {
-          const draft = { ...snap };
-          delete draft.event_id;
-          delete draft.base_revision;
-          showUndoToast(ui, '日程已删除', () => ui.store.saveEvent(draft));
-        }
-      }
-    });
-    return;
-  }
-  const snap = st.todos.find((t) => t.todo_id === ui.editingId);
-  const call = ui.store.removeTodo(ui.editingId);
+  const snap = st[spec.listKey].find(
+    (item) => item[spec.idKey] === ui.editingId
+  );
+  const call = ui.store[spec.removeKey](ui.editingId);
   runSafely(ui, call, '', {
     trigger: btn,
     onOk: () => {
       closeDialog();
       if (snap) {
         const draft = { ...snap };
-        delete draft.todo_id;
+        delete draft[spec.idKey];
         delete draft.base_revision;
-        showUndoToast(ui, 'Todo 已删除', () => ui.store.saveTodo(draft));
+        showUndoToast(ui, spec.label, () => ui.store[spec.saveKey](draft));
       }
     }
   });

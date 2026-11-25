@@ -51,7 +51,7 @@ function syncInlineComposerTokens(ui, target) {
     return;
   }
   const pos = target.selectionStart ?? ui.composer.text.length;
-  ui.render({});
+  ui.render();
   const nextEl = ui.doc.querySelector('#quick-todo-input');
   nextEl?.focus();
   nextEl?.setSelectionRange(pos, pos);
@@ -70,7 +70,7 @@ export function handleComposerInput(ui, event) {
   }
   if (target.id === 'quick-schedule') {
     ui.composer.schedule = target.value;
-    ui.render({});
+    ui.render();
     return;
   }
   if (target.id === 'quick-date') {
@@ -215,7 +215,7 @@ function handleSettingsClick(ui, target) {
   const authTab = target.closest('[data-auth-tab]');
   if (authTab) {
     ui.prefs.authTab = authTab.dataset.authTab;
-    ui.render({});
+    ui.render();
     return true;
   }
   const pairBtn = target.closest('[data-create-pair]');
@@ -302,7 +302,7 @@ export function handleContentClick(ui, event) {
   const qTarget = target.closest('[data-quick-target]');
   if (qTarget) {
     ui.composer.target = qTarget.dataset.quickTarget;
-    ui.render({});
+    ui.render();
     return;
   }
   const togTodo = target.closest('[data-toggle-todo], [data-switch-todo]');
