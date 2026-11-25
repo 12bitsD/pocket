@@ -36,8 +36,6 @@ jobs:
           java-version: '21'
           cache: gradle
       - if: startsWith(github.ref_name, 'calendar-v')
-        uses: android-actions/setup-android@v3
-      - if: startsWith(github.ref_name, 'calendar-v')
         name: Build & test signed Pocket Calendar Android APK
         env:
           POCKET_KEYSTORE_BASE64: ${{ secrets.POCKET_KEYSTORE_BASE64 }}

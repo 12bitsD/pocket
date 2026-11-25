@@ -39,6 +39,12 @@ has_host_android_sdk() {
 }
 
 if has_host_android_sdk; then
+  HOST_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+  SDKM="${HOST_SDK}/cmdline-tools/latest/bin/sdkmanager"
+  if [[ -x "$SDKM" && ! -d "${HOST_SDK}/platforms/android-35" ]]; then
+    yes | "$SDKM" --licenses >/dev/null 2>&1 || true
+    "$SDKM" "platform-tools" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+  fi
   (
     cd apps/calendar/android
     chmod +x gradlew

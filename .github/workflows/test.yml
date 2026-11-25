@@ -43,7 +43,6 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: gradle
-      - uses: android-actions/setup-android@v3
       - name: Build & test Pocket Calendar Android APK
         run: bash scripts/build-android-apk.sh
       - uses: actions/setup-python@v5
