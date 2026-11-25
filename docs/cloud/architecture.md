@@ -20,6 +20,7 @@ Pocket Cloud 是 **Pocket Calendar**（日程与时间）和 **Pocket Notes**（
 ## 2. 接口一览
 
 - **业务接口 `POST /v1/rpc/{method}`**：
+  - 当前身份：`auth.status`
   - 账号与设备：`pairing.create`, `pairing.claim`, `token.create`, `token.list`, `token.revoke`
   - Agent 配置：`agent.set`, `agent.list`, `agent.revoke`
   - 日程管理：`event.list`, `event.set`, `event.delete`

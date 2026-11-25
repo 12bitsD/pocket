@@ -14,6 +14,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate release tag format
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^(calendar|notes)-v[0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.]+)?$ ]]; then
+            echo "Invalid release tag: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -21,9 +27,39 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run check
-      - name: Package client artifact
+      - name: Package Web client artifact
         run: bash scripts/package-app.sh "${GITHUB_REF_NAME%%-v*}" "${GITHUB_REF_NAME#*-v}"
+      - if: startsWith(github.ref_name, 'calendar-v')
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - if: startsWith(github.ref_name, 'calendar-v')
+        uses: android-actions/setup-android@v3
+      - if: startsWith(github.ref_name, 'calendar-v')
+        name: Build & test signed Pocket Calendar Android APK
+        env:
+          POCKET_KEYSTORE_BASE64: ${{ secrets.POCKET_KEYSTORE_BASE64 }}
+          POCKET_KEYSTORE_PASSWORD: ${{ secrets.POCKET_KEYSTORE_PASSWORD }}
+          POCKET_KEY_ALIAS: ${{ secrets.POCKET_KEY_ALIAS }}
+          POCKET_KEY_PASSWORD: ${{ secrets.POCKET_KEY_PASSWORD }}
+        run: bash scripts/build-android-apk.sh "${GITHUB_REF_NAME#*-v}"
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" "dist/${GITHUB_REF_NAME%%-v*}-${GITHUB_REF_NAME#*-v}.zip" --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          APP_NAME="${GITHUB_REF_NAME%%-v*}"
+          VER="${GITHUB_REF_NAME#*-v}"
+          ASSETS=("dist/${APP_NAME}-${VER}.zip")
+          if [[ "$APP_NAME" == "calendar" ]]; then
+            ASSETS+=("dist/pocket-calendar-${VER}.apk")
+          fi
+          EXTRA_FLAGS=()
+          if [[ "$VER" == *-* ]]; then
+            EXTRA_FLAGS+=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" "${ASSETS[@]}" \
+            "${EXTRA_FLAGS[@]}" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

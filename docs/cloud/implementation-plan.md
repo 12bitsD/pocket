@@ -24,14 +24,19 @@ cloud/
 │   ├── context.py        # AppContext（持有连接池、加密器、在线手机连接表、时钟）
 │   ├── crypto.py         # SHA-256 令牌哈希与 AES-256-GCM 密钥加解密
 │   ├── db.py             # psycopg 异步连接池、顺序迁移器与串行写事务封装
-│   ├── auth.py           # Bearer 鉴权、权限开关检查、6 位配对码与 request_id 防重
+│   ├── auth.py           # Bearer 鉴权、权限开关检查与 Token 签发
+│   ├── pairing.py        # 6 位配对码生成、兑换与失败计数
+│   ├── tokens.py         # Token 列表、签发参数校验与吊销
 │   ├── agents.py         # 外部 Agent 地址与密钥管理
+│   ├── rpc.py            # RPC 分发与 request_id 防重
+│   ├── errors.py         # 统一 RPC 错误
 │   ├── calendar_svc.py   # 日程（含周期展开与重叠标记）与统一 Todo（含本机锁校验）
 │   ├── scheduler.py      # 到期任务扫描、30s 租约发包、退避重试与回调摘要写入
 │   ├── sync_ws.py        # 变更日志写入、WebSocket 握手补齐、实时推送与回执更新
 │   └── app.py            # FastAPI 路由注册与统一响应封装
 └── tests/
     ├── conftest.py
+    ├── test_cli.py
     ├── test_step1_auth_agents.py
     ├── test_step2_calendar_scheduler.py
     └── test_step3_sync_ws.py

@@ -8,12 +8,14 @@
     "packages/*"
   ],
   "scripts": {
+    "build": "npm --workspace @pocket/calendar run build",
     "check": "node scripts/check-apps.js",
-    "test": "node --test packages/agent-core/test/*.test.js",
+    "test": "node --test packages/agent-core/test/*.test.js apps/calendar/test/*.test.js",
     "style": "bits style check . --baseline bits-baseline.json",
     "style:diff": "bits style check --diff --commit origin/main",
     "style:fix": "bits style fix --diff --commit origin/main",
-    "style:report": "bits style report ."
+    "style:report": "bits style report .",
+    "verify": "bash scripts/verify.sh --step all"
   },
   "engines": {
     "node": ">=20"

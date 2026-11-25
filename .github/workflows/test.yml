@@ -5,11 +5,31 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pocket
+          POSTGRES_PASSWORD: pocket
+          POSTGRES_DB: pocket_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U pocket -d pocket_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -17,3 +37,80 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run check
+      - run: npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - name: Build & test Pocket Calendar Android APK
+        run: bash scripts/build-android-apk.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Run Pocket Cloud pytest suite
+        env:
+          UV_PROJECT_ENVIRONMENT: /tmp/pocket-venv
+        run: >-
+          cd cloud && uv sync --frozen && uv run --frozen pytest -q
+          --database-url postgresql://pocket:pocket@127.0.0.1:5432/pocket_test
+      - name: Build Pocket Cloud Docker image and run black-box E2E evals
+        env:
+          UV_PROJECT_ENVIRONMENT: /tmp/pocket-venv
+          DB_URL: postgresql://pocket:pocket@127.0.0.1:5432/pocket_test
+          SECRET_KEY: AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=
+        run: |
+          export PYTHONPATH="$GITHUB_WORKSPACE/cloud/src"
+          export PYTHONPATH="$PYTHONPATH:$GITHUB_WORKSPACE/scripts/eval"
+          docker build -q -t pocket-cloud:ci -f cloud/Dockerfile .
+          docker run -d --name pocket-cloud-ci --network host \
+            -e DATABASE_URL="$DB_URL" \
+            -e POCKET_BOOTSTRAP_KEY=ci-bootstrap-key \
+            -e POCKET_SECRET_KEY="$SECRET_KEY" \
+            -e POCKET_PUBLIC_URL=http://127.0.0.1:8787 \
+            -e POCKET_ALLOW_HTTP_LOOPBACK=true \
+            -e POCKET_PORT=8787 \
+            pocket-cloud:ci
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8787/healthz >/dev/null 2>&1 && break
+            sleep 0.25
+          done
+          (
+            cd cloud
+            uv run --frozen --no-dev python ../scripts/eval/run_evals.py \
+              --step 5 \
+              --base-url http://127.0.0.1:8787 \
+              --database-url "$DB_URL" \
+              --bootstrap-key ci-bootstrap-key \
+              --secret-key "$SECRET_KEY"
+          )
+          POCKET_EVAL_URL=http://127.0.0.1:8787 \
+          POCKET_EVAL_TOKEN=ci-bootstrap-key \
+          node scripts/eval/eval_web.mjs
+          POCKET_EVAL_URL=http://127.0.0.1:8787 \
+          POCKET_EVAL_TOKEN=ci-bootstrap-key \
+          node scripts/eval/eval_perf.mjs
+          docker rm -f pocket-cloud-ci
+      - name: Clean Python build caches
+        run: >-
+          rm -rf cloud/.venv cloud/.pytest_cache
+          cloud/src/pocket_cloud/__pycache__ cloud/tests/__pycache__
+          scripts/eval/__pycache__
+      - uses: actions/cache@v4
+        id: bits-bin
+        with:
+          path: ~/.cargo/bin/bits
+          key: bits-v0.3.5-${{ runner.os }}
+      - if: steps.bits-bin.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.bits-bin.outputs.cache-hit != 'true'
+        name: Install bits v0.3.5
+        run: >-
+          cargo install --git https://github.com/12bitsD/bits-style
+          --tag v0.3.5 --locked
+      - name: Run static style and hygiene audit
+        run: python3 scripts/eval/audit_codebase.py --root .

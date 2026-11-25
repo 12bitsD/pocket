@@ -11,12 +11,26 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install bits
-        run: cargo install --git https://github.com/12bitsD/bits-style --tag v0.3.5 --locked
-      - name: Check changed code
-        run: bits style check --diff --commit origin/main
+      - uses: actions/cache@v4
+        id: bits-bin
+        with:
+          path: ~/.cargo/bin/bits
+          key: bits-v0.3.5-${{ runner.os }}
+      - if: steps.bits-bin.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@stable
+      - if: steps.bits-bin.outputs.cache-hit != 'true'
+        name: Install bits
+        run: >-
+          cargo install --git https://github.com/12bitsD/bits-style
+          --tag v0.3.5 --locked
+      - name: Check baseline and changed code
+        run: |
+          bits style check . --baseline bits-baseline.json
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            bits style check --diff --commit origin/main
+          fi

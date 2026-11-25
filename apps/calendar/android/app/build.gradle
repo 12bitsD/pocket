@@ -1,0 +1,118 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+def computeSemverCode(String rawVer) {
+    def m = (rawVer =~ /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/)
+    if (!m.matches()) {
+        return 20000
+    }
+    int major = m.group(1).toInteger()
+    int minor = m.group(2).toInteger()
+    int patch = m.group(3).toInteger()
+    int rank = rawVer.contains('-') ? 10 : 99
+    return major * 1000000 + minor * 10000 + patch * 100 + rank
+}
+
+def envKeystorePath = System.getenv('POCKET_KEYSTORE_PATH')
+def resolvedKeystoreFile = envKeystorePath
+    ? file(envKeystorePath)
+    : layout.buildDirectory.file('tmp/release.keystore').get().asFile
+def resolvedStorePassword = System.getenv('POCKET_KEYSTORE_PASSWORD') ?: 'pocketrelease'
+def resolvedKeyAlias = System.getenv('POCKET_KEY_ALIAS') ?: 'pocket-calendar'
+def resolvedKeyPassword = System.getenv('POCKET_KEY_PASSWORD') ?: resolvedStorePassword
+def resolvedVersionName = (project.findProperty('pocketVersionName') ?: '0.2.0').toString()
+def explicitCode = project.findProperty('pocketVersionCode')?.toString()?.toInteger()
+def resolvedVersionCode = explicitCode ?: computeSemverCode(resolvedVersionName)
+
+tasks.register('ensureReleaseKeystore') {
+    doLast {
+        if (!envKeystorePath && !resolvedKeystoreFile.exists()) {
+            resolvedKeystoreFile.parentFile.mkdirs()
+            def keytoolBin = new File(System.getProperty('java.home'), 'bin/keytool').absolutePath
+            exec {
+                commandLine(
+                    keytoolBin,
+                    '-genkeypair',
+                    '-noprompt',
+                    '-keystore', resolvedKeystoreFile.absolutePath,
+                    '-storetype', 'PKCS12',
+                    '-alias', resolvedKeyAlias,
+                    '-keyalg', 'RSA',
+                    '-keysize', '2048',
+                    '-validity', '10000',
+                    '-storepass', resolvedStorePassword,
+                    '-keypass', resolvedKeyPassword,
+                    '-dname', 'CN=Pocket Calendar, OU=Pocket, O=Pocket, L=Local, S=Local, C=US'
+                )
+            }
+        }
+    }
+}
+
+android {
+    namespace 'com.pocket.calendar'
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        applicationId 'com.pocket.calendar'
+        minSdk rootProject.ext.minSdkVersion
+        targetSdk rootProject.ext.targetSdkVersion
+        versionCode resolvedVersionCode
+        versionName resolvedVersionName
+        aaptOptions {
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+
+    kotlinOptions {
+        jvmTarget = '21'
+    }
+
+    signingConfigs {
+        release {
+            storeFile resolvedKeystoreFile
+            storePassword resolvedStorePassword
+            keyAlias resolvedKeyAlias
+            keyPassword resolvedKeyPassword
+            enableV1Signing true
+            enableV2Signing true
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+tasks.matching {
+    it.name == 'validateSigningRelease' || it.name == 'packageRelease'
+}.configureEach {
+    dependsOn('ensureReleaseKeystore')
+}
+
+repositories {
+    flatDir {
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.core:core-ktx:$androidxCoreVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    implementation project(':capacitor-cordova-android-plugins')
+    testImplementation "junit:junit:$junitVersion"
+}
+
+apply from: 'capacitor.build.gradle'

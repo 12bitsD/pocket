@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#171614</color>
+    <color name="colorPrimaryDark">#171614</color>
+    <color name="colorAccent">#C44326</color>
+    <color name="paperLight">#F6F3EC</color>
+    <color name="paperCarbon">#171614</color>
+    <color name="cardDark">#201F1C</color>
+    <color name="paperInk">#EDE8DF</color>
+    <color name="paperMuted">#A39D93</color>
+    <color name="paperRule">#33302B</color>
+    <color name="vermilion">#C44326</color>
+    <color name="vermilionDark">#E05A3F</color>
+    <color name="vermilionTextDark">#F07158</color>
+    <color name="pine">#2D6A4F</color>
+</resources>

@@ -8,3 +8,10 @@ cloud/.env
 cloud/.venv/
 __pycache__/
 .pytest_cache/
+apps/**/android/.gradle/
+apps/**/android/build/
+apps/**/android/app/build/
+apps/**/android/capacitor-cordova-android-plugins/
+apps/**/android/local.properties
+apps/**/android/app/src/main/assets/public/
+*.keystore

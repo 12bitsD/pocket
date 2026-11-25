@@ -1,0 +1,32 @@
+buildscript {
+    apply from: "variables.gradle"
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.2'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
+    }
+}
+
+apply from: "variables.gradle"
+
+if (project.hasProperty('pocketBuildRoot')) {
+    def baseOut = file(project.property('pocketBuildRoot'))
+    allprojects { p ->
+        def subName = p.path == ':' ? 'root' : p.path.substring(1).replace(':', '_')
+        p.layout.buildDirectory.set(new File(baseOut, subName))
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}

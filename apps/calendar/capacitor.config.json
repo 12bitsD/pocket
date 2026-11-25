@@ -1,0 +1,9 @@
+{
+  "appId": "com.pocket.calendar",
+  "appName": "Pocket Calendar",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
+}
