@@ -11,6 +11,11 @@ Self-hosted backend shared by **Pocket Calendar** and **Pocket Notes**.
 - **Step 3**: ordered `sync_log`, zero-gap WebSocket `/v1/link` catch-up and
   live `SYNC_PUSH`, `@me` alarm receipts (`EXECUTED` / `FAILED` / `MISSED`),
   device `LOCK_OVERRIDE`, instant token revocation kick, and sync CLI
+- **Performance & Mobile Battery**: single-RTT `sync.bootstrap` cold-start
+  snapshot (`*`, `event.read`, `todo.read`), single-checkout DB authentication
+  reuse, partial/covering PostgreSQL indexes (`0004_performance_indexes.sql`),
+  `GZipMiddleware` response compression, and bounded concurrent (`Semaphore(8)`)
+  outbound `@agent` webhook dispatch
 
 ## Configuration
 
@@ -37,34 +42,35 @@ at startup. Changing `POCKET_BOOTSTRAP_KEY` revokes the previous bootstrap key.
 
 ## CLI
 
-The CLI calls the same HTTP RPC and WebSocket `/v1/link` APIs as web and mobile
-clients. Inside the container, `POCKET_URL` defaults to the local service; use
-the bootstrap key or a paired device token for personal commands:
+The CLI (`pocket`, also installed as `pocket-cloud`) calls the same HTTP RPC and
+WebSocket `/v1/link` APIs as web and mobile clients. Inside the container,
+`POCKET_URL` defaults to the local service; use the bootstrap key or a paired
+device token for personal commands:
 
 ```sh
 docker compose -f cloud/docker-compose.yml exec pocket-cloud sh -c '
   export POCKET_TOKEN="$POCKET_BOOTSTRAP_KEY"
-  pocket-cloud status
-  pocket-cloud pair create
-  pocket-cloud token create --kind agent --label reader \
+  pocket status
+  pocket pair create
+  pocket token create --kind agent --label reader \
     --scopes event.read,todo.read
-  pocket-cloud agent set @work-agent \
+  pocket agent set @work-agent \
     --url https://agent.example.com --key replace-with-agent-secret
-  pocket-cloud agent list
+  pocket agent list
 
   # Step 2: events, unified todos, and immediate @agent trigger
-  pocket-cloud event add --date 2026-11-24 --start 09:00 --end 10:00 \
+  pocket event add --date 2026-11-24 --start 09:00 --end 10:00 \
     --title "Design Review" --repeat weekdays --reminder alarm
-  pocket-cloud event list --from 2026-11-24 --to 2026-11-30
-  pocket-cloud todo add "Wake up @me 07:30" --date 2026-11-25
-  pocket-cloud todo add "Daily digest @work-agent 16:00" --schedule daily
-  pocket-cloud todo list
-  pocket-cloud trigger <todo_id>
+  pocket event list --from 2026-11-24 --to 2026-11-30
+  pocket todo add "Wake up @me 07:30" --date 2026-11-25
+  pocket todo add "Daily digest @work-agent 16:00" --schedule daily
+  pocket todo list
+  pocket trigger <todo_id>
 
   # Step 3: WebSocket sync stream and alarm receipt ack
   # --status: EXECUTED | FAILED | MISSED (pass --entity todo|event for custom IDs)
-  pocket-cloud sync watch --from-seq 0 --limit 5
-  pocket-cloud sync ack <todo_or_event_id> --status EXECUTED
+  pocket sync watch --from-seq 0 --limit 5
+  pocket sync ack <todo_or_event_id> --status EXECUTED
 '
 ```
 
@@ -72,7 +78,7 @@ Claim a pairing code without a management token:
 
 ```sh
 docker compose -f cloud/docker-compose.yml exec pocket-cloud \
-  pocket-cloud pair claim 123456 --name "My phone"
+  pocket pair claim 123456 --name "My phone"
 ```
 
 Replace `123456` with the code returned by `pair create`. Add `--json` to any

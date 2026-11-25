@@ -10,7 +10,7 @@
   <p>
     <a href="#为什么做-pocket">为什么做</a> ·
     <a href="#怎么接入-ai">怎么接入 AI</a> ·
-    <a href="#界面一览">界面一览</a> ·
+    <a href="#界面与手机体验">界面与手机体验</a> ·
     <a href="#两个独立应用">产品构成</a> ·
     <a href="#下载与部署">下载与部署</a>
   </p>
@@ -32,24 +32,24 @@
 
 Pocket 围绕「人和自己的 Agent 怎么配合管时间」设计了 4 个核心能力：
 
-### 1. 在 Todo 里直接 `@` 你的 Agent，到点自动唤醒它干活
-不用把“个人闹钟”和“AI 定时任务”拆成两套系统。在同一行待办里：
-- 选 **`@me 07:30`** → 同步到手机系统闹钟准点响铃（Direct Boot 未解锁重启可恢复、断网本地即设、锁屏全屏唤醒与 10 分钟贪睡）；
-- 选 **`@work-agent 16:00`** → 到点由私有云直接把这条内容通过 HTTP 发给你的 Agent 去跑，**不要求手机亮屏在线**，跑完的结果摘要直接挂回原待办下面。
+### 1. 在 Todo 里直接 `@` 你的 Agent，支持自然时间短语
+不用把“个人闹钟”和“AI 定时任务”拆成两套系统。同一行待办支持直接写 `今天 / 明天 / 每天 / 工作日 / 每周三` 加时间，自动识别单次或周期计划：
+- 写 **`早起赶车 @me 明天 07:30`** → 同步到手机系统闹钟准点响铃（`AlarmManager.setAlarmClock` 硬件级唤醒、Direct Boot 未解锁重启自动恢复、断网本地即设、锁屏全屏响铃与 10 分钟贪睡）；
+- 写 **`整理日报 @work-agent 工作日 18:00`** → 到点由私有云直接通过 HTTP 把这条任务发给你的 Agent 去跑，**不要求手机亮屏在线**，跑完的结果摘要直接挂回原待办下面。
 
 ### 2. AI 也能反过来帮你排日程、设真机闹钟
-给你的 Agent 配一把受限密钥，它就能直接调接口查你的空档、建日程、加待办或设手机闹钟。状态完全诚实——只有手机真正写进系统闹钟后才返回 `EXECUTED`，手机离线排队或权限缺失失败都会如实告知，不报假喜。
+给你的 Agent 配一把按权限受限的密钥（例如仅开放 `event.read,todo.write`），它就能直接调接口查空档、建日程、加待办或设手机闹钟。状态完全诚实——只有真机把闹钟写进系统后才回传 `EXECUTED`，手机离线排队（`QUEUED`）或系统权限缺失失败（`FAILED`）都会如实告知，不报假喜。
 
 ### 3. 给关键事项留“人类护栏”：本机锁与按需授权
-- **本机锁（`LOCKED`）**：像早起赶高铁这种不能出岔子的闹钟，在手机上打开本机锁后，AI 和远端一律不能修改或关闭；手机离线期间修改本机锁事项也会在重连后优先覆盖云端。
-- **按开关细粒度授权**：哪个 Agent 只允许读日程、哪个允许改待办、或者（后续）只允许读哪几篇笔记，全部单独开关控制，随时可撤回。
+- **本机锁（`LOCKED`）**：像早起赶高铁这种不能出岔子的闹钟，在手机上打开本机锁后，AI 和远端一律不能修改或关闭；手机离线期间改动的本机锁事项，也会在重连后通过 `LOCK_OVERRIDE` 优先覆盖云端。
+- **按开关细粒度授权**：哪个 Agent 只允许读日程、哪个允许改待办、或者（后续）只允许读哪几篇笔记，全部独立签发与控制；密钥一旦撤回，活跃同步连接立即断开。
 
-### 4. 纯 HTTP + CLI 胶水层，不绑死任何 AI 框架
-不管你用的是自建 Agent、Claude / Codex 脚本还是自动化工作流，只要能收发普通 HTTP JSON 请求或直接调用 `pocket` CLI，填一个地址和密钥就能连进来。
+### 4. 纯 HTTP + WebSocket + CLI 胶水层，不绑死任何 AI 框架
+不管你用的是自建 Agent、Claude / Codex 脚本还是自动化工作流，只要能收发普通 HTTP JSON 请求（`/v1/rpc`）、增量同步流（`/v1/link`）或直接调用 `pocket` CLI，填一个地址和密钥就能连进来。
 
 ---
 
-## 界面一览
+## 界面与手机体验
 
 <p align="center">
   <img src="docs/assets/pocket-screens.png" alt="Pocket Calendar 三栏界面：今日日程、月历、统一 Todo" width="100%">
@@ -57,11 +57,16 @@ Pocket 围绕「人和自己的 Agent 怎么配合管时间」设计了 4 个核
 
 | 栏位 | 说明 |
 | --- | --- |
-| **`[d]` 今日日程** | 只显示今天当天的安排（下一场主角卡 + 今日其余场次 + 时间重叠提醒），不被跨天事项干扰。 |
-| **`[m]` 月历** | 7 列等宽月历，区分强提醒响铃与普通日程，点选任意日期查看或新建。 |
-| **`[t]` Todo** | 一套输入同时管普通待办、`@me` 手机闹钟与 `@agent` 定时任务；单次事项打勾归档，周期任务用开关启停并支持跳过下一次。 |
+| **`[d]` 今日日程** | 只显示今天当天的安排（下一场主角卡 + 今日其余场次 + 时间重叠提醒），新建日程内置 `30m / 1h / 2h` 快捷时长档位。 |
+| **`[m]` 月历** | 7 列等宽月历，区分强提醒响铃与普通日程；桌面端支持方向键跳转，手机端支持左右横滑切月。 |
+| **`[t]` Todo** | 一套输入同时管普通待办、`@me` 手机闹钟与 `@agent` 定时任务；单次事项打勾归档，周期任务用开关启停并支持跳过下一次，已撤回事项自动折叠收纳。 |
 
-支持浅色暖亚麻纸与夜间深炭纸两种主题（按键 `b` 切换），手机端内置真机 4 项响铃权限一键自检跳转卡。
+针对日常高频使用与 Android 真机场景做的体验打磨：
+
+- **离线优先与断网重放**：飞行模式或弱网下照常新建、修改日程与本机锁闹钟；系统硬件闹钟本地立即落盘生效，恢复联网后自动按序重放离线队列与响铃回执。
+- **单手触控与防误触**：适配全面屏顶部状态栏与底部手势安全区；支持底部抽屉下拉收起、Android 系统返回键逐层回退，以及删除事项后 `4.5s [撤销]` 恢复。
+- **冷热秒开与后台省电**：首次冷启动通过 `sync.bootstrap` 单次请求拉齐快照，本地缓存热启动 `0` 网络请求直出首屏；锁屏退入后台后自动排空在途确认并挂起 WebSocket 射频（`IDLE · SAVING`），锁屏响铃时钟按整分边界每分钟仅唤醒 1 次。
+- **双纸墨主题与 4 项权限自检**：支持暖亚麻浅色纸与深炭夜间纸（按键 `b` 切换）；Android 端 `cfg` 页内置精确闹钟、通知、全屏锁屏唤醒、电池无限制 4 项权限实时自检与系统设置直跳卡。
 
 ---
 
@@ -71,7 +76,7 @@ Pocket 围绕「人和自己的 Agent 怎么配合管时间」设计了 4 个核
 
 | 应用 | 定位 | 状态 |
 | --- | --- | --- |
-| **Pocket Calendar** | 日程、月历、手机闹钟与 Agent 定时任务合一 | 已交付（Web 独立包 + Android 正式 APK · `calendar-v*`） |
+| **Pocket Calendar** | 日程、月历、手机闹钟与 Agent 定时任务合一 | 已交付（[`calendar-v0.2.0`](https://github.com/12bitsD/pocket/releases/tag/calendar-v0.2.0) · Web 独立包 + Android 签名 APK） |
 | **Pocket Notes** | 独立笔记应用，支持按篇勾选授权给指定 Agent 读取 | 规划中（独立安装包与入口 · `notes-v*`） |
 
 ---
@@ -79,15 +84,24 @@ Pocket 围绕「人和自己的 Agent 怎么配合管时间」设计了 4 个核
 ## 下载与部署
 
 ### 客户端（Android APK & Web）
-前往 **[GitHub Releases](https://github.com/12bitsD/pocket/releases)** 下载对应应用的独立发布产物（`calendar-v*` 同时提供 `pocket-calendar-<ver>.apk` 安卓安装包与 `calendar-<ver>.zip` 独立网页包）。
+前往 **[GitHub Releases](https://github.com/12bitsD/pocket/releases)**（最新：[`calendar-v0.2.0`](https://github.com/12bitsD/pocket/releases/tag/calendar-v0.2.0)）直接下载：
+- **`pocket-calendar-0.2.0.apk`** — Android 真机签名安装包（含 Capacitor 容器与 Kotlin Direct Boot 系统闹钟原生插件）
+- **`calendar-0.2.0.zip`** — 独立网页端静态包（可托管在任意静态服务器或本地打开）
 
-本地开发预览与构建：
+**Android 真机三步上手：**
+1. 安装 `pocket-calendar-0.2.0.apk`，打开底栏 **`cfg`** 页面确认 4 项响铃权限全部为 `OK`；
+2. 在已登录云端的电脑网页 `cfg` 页点击「生成 6 位配对码」（或在服务端执行 `pocket pair create`）；
+3. 在手机端填入私有云地址与 6 位数字配对码即可绑定本机，无需在手机上手动粘贴长密钥。
+
+本地开发、打包与全链路验证：
 
 ```sh
 npm install
 npm --workspace @pocket/calendar run dev     # 本地启动 Vite 预览（未连云端时自动进入 DEMO 演示态）
+npm test                                     # 运行前端、离线同步与定时契约单元测试
 npm run build                                # 构建网页端静态包 apps/calendar/dist/
 bash scripts/build-android-apk.sh 0.2.0      # 构建并单测签名版 Android APK -> dist/pocket-calendar-0.2.0.apk
+bash scripts/verify.sh --step all            # 一键跑完前后端单测、PG 集成、首屏/省电基准与静态审计
 ```
 
 ### 私有云端与 CLI
@@ -95,11 +109,17 @@ bash scripts/build-android-apk.sh 0.2.0      # 构建并单测签名版 Android 
 
 ```sh
 cp cloud/.env.example cloud/.env
-# 启动前请先将 cloud/.env 中的 POCKET_BOOTSTRAP_KEY 与 POCKET_SECRET_KEY 替换为真实密钥
-docker compose -f cloud/docker-compose.yml up -d
+# 启动前请将 cloud/.env 中的 POCKET_BOOTSTRAP_KEY、POCKET_SECRET_KEY、POSTGRES_PASSWORD（及 DATABASE_URL）替换为真实密钥
+docker compose -f cloud/docker-compose.yml up -d --build
 
-# 使用 CLI 管理配对码、日程、Todo、触发调试与同步监听
-cd cloud && uv run pocket --help
+# 使用 pocket CLI（别名 pocket-cloud）管理配对码、日程、Todo、触发调试与同步监听
+docker compose -f cloud/docker-compose.yml exec pocket-cloud sh -c '
+  export POCKET_TOKEN="$POCKET_BOOTSTRAP_KEY"
+  pocket status
+  pocket pair create
+  pocket todo add "早起赶车 @me 07:30" --date 2026-11-26
+  pocket sync watch --from-seq 0 --limit 5
+'
 ```
 
 ---
