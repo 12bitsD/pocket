@@ -189,21 +189,17 @@ function handleSocketClose(ctx, ws, event, deps) {
 
 function createHandshakeState(sentLastSeq, resolve, reject) {
   let settled = false;
+  const once = (fn) => (val) => {
+    if (!settled) {
+      settled = true;
+      fn(val);
+    }
+  };
   return {
     sentLastSeq,
     catchupFrames: [],
-    resolve: (val) => {
-      if (!settled) {
-        settled = true;
-        resolve(val);
-      }
-    },
-    reject: (err) => {
-      if (!settled) {
-        settled = true;
-        reject(err);
-      }
-    }
+    resolve: once(resolve),
+    reject: once(reject)
   };
 }
 

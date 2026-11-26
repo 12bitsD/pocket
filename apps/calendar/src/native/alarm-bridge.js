@@ -216,7 +216,7 @@ async function executePermissionRefresh(rt) {
   if (!rt.disposed) {
     const perms = normalizePermissions(raw);
     rt.ctx.state = { ...rt.ctx.state, nativePermissions: perms };
-    rt.notify(rt.ctx);
+    rt.ctx.notify();
   }
   return rt.ctx.state.nativePermissions;
 }
@@ -258,12 +258,11 @@ function recordBridgeError(rt) {
   };
 }
 
-function createBridgeRuntime(ctx, storeApi, plugin, notify) {
+function createBridgeRuntime(ctx, storeApi, plugin) {
   const rt = {
     ctx,
     storeApi,
     plugin,
-    notify,
     disposed: false,
     syncScheduled: false,
     lastSpecHash: '',
@@ -293,7 +292,7 @@ function createBridgeRuntime(ctx, storeApi, plugin, notify) {
   };
 }
 
-export function attachNativeAlarmBridge(ctx, storeApi, options, notify) {
+export function attachNativeAlarmBridge(ctx, storeApi, options) {
   const plugin = resolveAlarmPlugin(options);
   if (!plugin) {
     return Object.freeze({
@@ -303,7 +302,7 @@ export function attachNativeAlarmBridge(ctx, storeApi, options, notify) {
       destroy: () => {}
     });
   }
-  const ctrl = createBridgeRuntime(ctx, storeApi, plugin, notify);
+  const ctrl = createBridgeRuntime(ctx, storeApi, plugin);
   const unsubStore = storeApi.subscribe(ctrl.scheduleSync);
   const runResumePass = () => {
     ctrl.refreshPermissions().catch(ctrl.onErr);

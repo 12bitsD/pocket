@@ -85,23 +85,17 @@ export function formatDelta(ms) {
 }
 
 export function buildMonthCells(year, month) {
-  const firstDay = new Date(year, month, 1);
-  const startOffset = (firstDay.getDay() + 6) % 7;
+  const startOffset = (new Date(year, month, 1).getDay() + 6) % 7;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const prevDays = new Date(year, month, 0).getDate();
+  const total = Math.ceil((startOffset + daysInMonth) / 7) * 7;
   const cells = [];
-  for (let i = startOffset - 1; i >= 0; i -= 1) {
-    const dt = new Date(year, month - 1, prevDays - i);
-    cells.push({ iso: formatDateParts(dt), day: dt.getDate(), outside: true });
-  }
-  for (let day = 1; day <= daysInMonth; day += 1) {
-    const dt = new Date(year, month, day);
-    cells.push({ iso: formatDateParts(dt), day, outside: false });
-  }
-  while (cells.length % 7 !== 0) {
-    const nextIdx = cells.length - (startOffset + daysInMonth) + 1;
-    const dt = new Date(year, month + 1, nextIdx);
-    cells.push({ iso: formatDateParts(dt), day: dt.getDate(), outside: true });
+  for (let i = 0; i < total; i += 1) {
+    const dt = new Date(year, month, 1 - startOffset + i);
+    cells.push({
+      iso: formatDateParts(dt),
+      day: dt.getDate(),
+      outside: dt.getMonth() !== month
+    });
   }
   return cells;
 }

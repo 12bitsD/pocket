@@ -10,7 +10,12 @@ import httpx
 import uvicorn
 
 from .app import create_app
-from .cli_commands import add_domain_parsers, format_table
+from .cli_commands import (
+    add_domain_parsers,
+    format_table,
+    rpc_read,
+    rpc_write,
+)
 from .cli_sync import add_sync_parsers
 from .config import Settings
 from .crypto import encryption_key
@@ -97,7 +102,7 @@ def add_pair_parsers(groups, json_parent):
         dest="action", required=True
     )
     pair.add_parser("create", parents=[json_parent]).set_defaults(
-        handler=handle_pair_create
+        handler=rpc_write("pairing.create")
     )
     claim = pair.add_parser("claim", parents=[json_parent])
     claim.add_argument("code")
@@ -115,11 +120,11 @@ def add_token_parsers(groups, json_parent):
     create.add_argument("--scopes", default="")
     create.set_defaults(handler=handle_token_create)
     token.add_parser("list", parents=[json_parent]).set_defaults(
-        handler=handle_token_list
+        handler=rpc_read("token.list")
     )
     revoke = token.add_parser("revoke", parents=[json_parent])
     revoke.add_argument("token_id")
-    revoke.set_defaults(handler=handle_token_revoke)
+    revoke.set_defaults(handler=rpc_write("token.revoke", "token_id"))
 
 
 def add_agent_parsers(groups, json_parent):
@@ -133,11 +138,11 @@ def add_agent_parsers(groups, json_parent):
     set_parser.add_argument("--name")
     set_parser.set_defaults(handler=handle_agent_set)
     agent.add_parser("list", parents=[json_parent]).set_defaults(
-        handler=handle_agent_list
+        handler=rpc_read("agent.list")
     )
     revoke = agent.add_parser("revoke", parents=[json_parent])
     revoke.add_argument("agent_id")
-    revoke.set_defaults(handler=handle_agent_revoke)
+    revoke.set_defaults(handler=rpc_write("agent.revoke", "agent_id"))
 
 
 async def run_with_args(args, target: Target, client):
@@ -191,43 +196,16 @@ async def handle_status(args, rt: CliRuntime):
     return dict(health=response.json(), identity=identity)
 
 
-async def handle_pair_create(args, rt: CliRuntime):
-    _ = args
-    return await rt.rpc.call("pairing.create", dict(), rt.new_request_id())
-
-
 async def handle_pair_claim(args, rt: CliRuntime):
     public_rpc = RpcClient(rt.rpc.client, replace(rt.target, token=None))
     params = dict(code=args.code, name=args.name)
     return await public_rpc.call("pairing.claim", params, rt.new_request_id())
 
 
-async def handle_token_list(args, rt: CliRuntime):
-    _ = args
-    return await rt.rpc.call("token.list", dict())
-
-
-async def handle_token_revoke(args, rt: CliRuntime):
-    return await rt.rpc.call(
-        "token.revoke", dict(token_id=args.token_id), rt.new_request_id()
-    )
-
-
 async def handle_token_create(args, rt: CliRuntime):
     scopes = [value for value in args.scopes.split(",") if value]
     params = dict(kind=args.kind, label=args.label, scopes=scopes)
     return await rt.rpc.call("token.create", params, rt.new_request_id())
-
-
-async def handle_agent_list(args, rt: CliRuntime):
-    _ = args
-    return await rt.rpc.call("agent.list", dict())
-
-
-async def handle_agent_revoke(args, rt: CliRuntime):
-    return await rt.rpc.call(
-        "agent.revoke", dict(agent_id=args.agent_id), rt.new_request_id()
-    )
 
 
 async def handle_agent_set(args, rt: CliRuntime):

@@ -19,10 +19,25 @@ REPEAT_RULES = ("none", "daily", "weekdays", "weekly")
 REMINDER_POLICIES = ("none", "notify", "alarm")
 EVENT_NOT_FOUND = ("EVENT_NOT_FOUND", "Event not found")
 
-EVENT_COLUMNS = (
-    "event_id, event_date, start_hhmm, end_hhmm, title, location, "
-    "repeat_rule, reminder_policy, reminder_offset_minutes, "
-    "alarm_status, source, revision, updated_at"
+EVENT_FIELD_NAMES = (
+    "event_id", "event_date", "start_hhmm", "end_hhmm", "title", "location",
+    "repeat_rule", "reminder_policy", "reminder_offset_minutes",
+    "alarm_status", "source", "revision", "updated_at",
+)
+EVENT_COLUMNS = ", ".join(EVENT_FIELD_NAMES)
+EVENT_UPSERT_SQL = (
+    "INSERT INTO events ("
+    + EVENT_COLUMNS
+    + ") VALUES ("
+    + ", ".join(["%s"] * len(EVENT_FIELD_NAMES))
+    + ") ON CONFLICT (event_id) DO UPDATE SET "
+    + ", ".join(
+        f"{col} = EXCLUDED.{col}"
+        for col in EVENT_FIELD_NAMES
+        if col != "event_id"
+    )
+    + " RETURNING "
+    + EVENT_COLUMNS
 )
 
 
@@ -193,22 +208,7 @@ async def write_event_row(conn, entry: EventWriteRow) -> dict:
         entry.reminder_offset_minutes, entry.alarm_status, entry.source,
         entry.revision, entry.updated_at,
     )
-    sql = (
-        "INSERT INTO events ("
-        + EVENT_COLUMNS
-        + ") VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
-        + "ON CONFLICT (event_id) DO UPDATE SET "
-        + "event_date = EXCLUDED.event_date, start_hhmm = EXCLUDED.start_hhmm, "
-        + "end_hhmm = EXCLUDED.end_hhmm, title = EXCLUDED.title, "
-        + "location = EXCLUDED.location, repeat_rule = EXCLUDED.repeat_rule, "
-        + "reminder_policy = EXCLUDED.reminder_policy, "
-        + "reminder_offset_minutes = EXCLUDED.reminder_offset_minutes, "
-        + "alarm_status = EXCLUDED.alarm_status, source = EXCLUDED.source, "
-        + "revision = EXCLUDED.revision, updated_at = EXCLUDED.updated_at "
-        + "RETURNING "
-        + EVENT_COLUMNS
-    )
-    cursor = await conn.execute(sql, values)
+    cursor = await conn.execute(EVENT_UPSERT_SQL, values)
     return serialize_event(await cursor.fetchone())
 
 

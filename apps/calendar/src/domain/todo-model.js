@@ -104,32 +104,20 @@ function makeHandlePattern(handle) {
   );
 }
 
+const INLINE_TIME_RE = /\b([01]?\d|2[0-3]):([0-5]\d)\b/;
+const INLINE_DOW_MAP = Object.freeze({
+  '日': 0, '天': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6
+});
+const INLINE_SCHED_RE = /(?:^|\s)(今天|明天|每天|工作日|每周([一二三四五六日天])?)(?=\s|$)/;
+
 export function parseInlineTokens(rawText, agentIds) {
   const text = String(rawText || '');
-  let target = null;
-  for (const handle of sortedCandidateHandles(agentIds)) {
-    if (makeHandlePattern(handle).test(text)) {
-      target = handle;
-      break;
-    }
-  }
-  const match = /\b([01]?\d|2[0-3]):([0-5]\d)\b/.exec(text);
+  const target = sortedCandidateHandles(agentIds)
+    .find((h) => makeHandlePattern(h).test(text)) || null;
+  const match = INLINE_TIME_RE.exec(text);
   const time = match ? `${match[1].padStart(2, '0')}:${match[2]}` : null;
   return { target, time };
 }
-
-const INLINE_DOW_MAP = Object.freeze({
-  '日': 0,
-  '天': 0,
-  '一': 1,
-  '二': 2,
-  '三': 3,
-  '四': 4,
-  '五': 5,
-  '六': 6
-});
-
-const INLINE_SCHED_RE = /(?:^|\s)(今天|明天|每天|工作日|每周([一二三四五六日天])?)(?=\s|$)/;
 
 export function parseInlineSchedule(rawText) {
   const match = INLINE_SCHED_RE.exec(String(rawText || ''));
@@ -138,8 +126,7 @@ export function parseInlineSchedule(rawText) {
   }
   const token = match[1];
   if (token.startsWith('每周')) {
-    const dowChar = match[2] || '五';
-    return { schedule: '每周', weeklyDow: INLINE_DOW_MAP[dowChar] ?? 5 };
+    return { schedule: '每周', weeklyDow: INLINE_DOW_MAP[match[2] || '五'] ?? 5 };
   }
   return { schedule: token, weeklyDow: null };
 }
@@ -151,7 +138,7 @@ export function cleanInlineTokens(rawText, agentIds) {
   }
   return cleaned
     .replace(INLINE_SCHED_RE, ' ')
-    .replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b/, '')
+    .replace(INLINE_TIME_RE, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
 }
@@ -231,15 +218,17 @@ export function buildTodoSetParams(draft, existing, context) {
   return payload;
 }
 
+const KIND_LABELS = Object.freeze(
+  Object.assign(Object.create(null), { daily: '每天', weekdays: '工作日' })
+);
+
 export function todoScheduleUiValue(todo, todayIso) {
   if (!todo || todo.assignee === 'none' || !todo.schedule_kind) {
     return '工作日';
   }
-  if (todo.schedule_kind === 'daily') {
-    return '每天';
-  }
-  if (todo.schedule_kind === 'weekdays') {
-    return '工作日';
+  const label = KIND_LABELS[todo.schedule_kind];
+  if (label) {
+    return label;
   }
   if (todo.schedule_kind === 'weekly') {
     return '每周';
@@ -247,18 +236,13 @@ export function todoScheduleUiValue(todo, todayIso) {
   if (todo.once_date === todayIso) {
     return '今天';
   }
-  if (todo.once_date === addDaysIso(todayIso, 1)) {
-    return '明天';
-  }
-  return '指定日期';
+  return todo.once_date === addDaysIso(todayIso, 1) ? '明天' : '指定日期';
 }
 
 export function formatTodoWhenLabel(todo, todayIso) {
-  if (todo.schedule_kind === 'daily') {
-    return '每天';
-  }
-  if (todo.schedule_kind === 'weekdays') {
-    return '工作日';
+  const label = KIND_LABELS[todo.schedule_kind];
+  if (label) {
+    return label;
   }
   if (todo.schedule_kind === 'weekly') {
     return `每${DOW_LABELS[todo.weekly_dow ?? 5]}`;

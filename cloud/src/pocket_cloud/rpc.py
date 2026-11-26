@@ -41,15 +41,17 @@ ADMIN_METHODS = (
     "agent.list",
     "agent.revoke",
 )
-SCOPED_METHODS = (
-    ("event.list", "event.read"),
-    ("event.set", "event.write"),
-    ("event.delete", "event.write"),
-    ("todo.list", "todo.read"),
-    ("todo.set", "todo.write"),
-    ("todo.toggle", "todo.write"),
-    ("todo.delete", "todo.write"),
-    ("todo.trigger", "todo.write"),
+SCOPED_METHODS = MappingProxyType(
+    {
+        "event.list": "event.read",
+        "event.set": "event.write",
+        "event.delete": "event.write",
+        "todo.list": "todo.read",
+        "todo.set": "todo.write",
+        "todo.toggle": "todo.write",
+        "todo.delete": "todo.write",
+        "todo.trigger": "todo.write",
+    }
 )
 
 
@@ -121,11 +123,11 @@ def check_permissions(method: str, identity) -> None:
         return
     if method in ADMIN_METHODS:
         raise RpcError(403, "FORBIDDEN", "Personal token required")
-    for target_method, required_scope in SCOPED_METHODS:
-        if method == target_method and required_scope not in identity.scopes:
-            raise RpcError(
-                403, "FORBIDDEN", "Missing required scope: %s" % required_scope
-            )
+    required_scope = SCOPED_METHODS.get(method)
+    if required_scope is not None and required_scope not in identity.scopes:
+        raise RpcError(
+            403, "FORBIDDEN", "Missing required scope: %s" % required_scope
+        )
 
 
 def extract_bearer_token(method: str, authorization: str | None) -> str | None:

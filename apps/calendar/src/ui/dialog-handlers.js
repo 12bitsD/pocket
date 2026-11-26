@@ -159,7 +159,11 @@ const DELETE_SPECS = Object.freeze({
   })
 });
 
-function handleDeleteWithUndo(ui, kind, closeDialog, btn) {
+function closeFormDialog(ui) {
+  ui.doc.querySelector('#form-dialog')?.close();
+}
+
+function handleDeleteWithUndo(ui, kind, btn) {
   const spec = DELETE_SPECS[kind] || DELETE_SPECS.todo;
   const st = ui.store.getState();
   const snap = st[spec.listKey].find(
@@ -169,7 +173,7 @@ function handleDeleteWithUndo(ui, kind, closeDialog, btn) {
   runSafely(ui, call, '', {
     trigger: btn,
     onOk: () => {
-      closeDialog();
+      closeFormDialog(ui);
       if (snap) {
         const draft = { ...snap };
         delete draft[spec.idKey];
@@ -180,10 +184,21 @@ function handleDeleteWithUndo(ui, kind, closeDialog, btn) {
   });
 }
 
+const EDIT_DIALOG_ACTIONS = [
+  ['#skip-next-todo', (ui, btn) => runSafely(
+    ui, ui.store.toggleSkipNext(ui.editingId), '已更新跳过状态',
+    { onOk: () => closeFormDialog(ui), trigger: btn }
+  )],
+  ['#trigger-todo', (ui, btn) => runSafely(
+    ui, ui.store.triggerAgentTodo(ui.editingId), '已触发 Agent 执行',
+    { onOk: () => closeFormDialog(ui), trigger: btn }
+  )],
+  ['#delete-event', (ui, btn) => handleDeleteWithUndo(ui, 'event', btn)],
+  ['#delete-todo', (ui, btn) => handleDeleteWithUndo(ui, 'todo', btn)]
+];
+
 export function handleDialogClick(ui, event) {
   const form = ui.doc.querySelector('#active-form');
-  const dialog = ui.doc.querySelector('#form-dialog');
-  const closeDialog = () => dialog.close();
   const secretBtn = event.target.closest('[data-toggle-secret]');
   if (secretBtn) {
     toggleSecretInput(form, secretBtn);
@@ -192,36 +207,16 @@ export function handleDialogClick(ui, event) {
   if (applyDateShortcutClick(ui, form, event) || !ui.editingId) {
     return;
   }
-  const skipBtn = event.target.closest('#skip-next-todo');
-  if (skipBtn) {
-    const call = ui.store.toggleSkipNext(ui.editingId);
-    runSafely(ui, call, '已更新跳过状态', {
-      onOk: closeDialog,
-      trigger: skipBtn
-    });
-    return;
-  }
-  const trigBtn = event.target.closest('#trigger-todo');
-  if (trigBtn) {
-    const call = ui.store.triggerAgentTodo(ui.editingId);
-    runSafely(ui, call, '已触发 Agent 执行', {
-      onOk: closeDialog,
-      trigger: trigBtn
-    });
-    return;
-  }
-  const delEvBtn = event.target.closest('#delete-event');
-  if (delEvBtn) {
-    handleDeleteWithUndo(ui, 'event', closeDialog, delEvBtn);
-    return;
-  }
-  const delTdBtn = event.target.closest('#delete-todo');
-  if (delTdBtn) {
-    handleDeleteWithUndo(ui, 'todo', closeDialog, delTdBtn);
+  for (const [selector, handler] of EDIT_DIALOG_ACTIONS) {
+    const btn = event.target.closest(selector);
+    if (btn) {
+      handler(ui, btn);
+      return;
+    }
   }
 }
 
-function submitTodoDialog(ui, fd, closeDialog, submitBtn) {
+function submitTodoDialog(ui, fd, submitBtn) {
   const target = String(fd.get('target') || 'none');
   const call = ui.store.saveTodo({
     todo_id: ui.editingId,
@@ -234,12 +229,12 @@ function submitTodoDialog(ui, fd, closeDialog, submitBtn) {
     locked: target === '@me' && Boolean(fd.get('locked'))
   });
   runSafely(ui, call, 'Todo 已保存', {
-    onOk: closeDialog,
+    onOk: () => closeFormDialog(ui),
     trigger: submitBtn
   });
 }
 
-function submitEventDialog(ui, fd, closeDialog, submitBtn) {
+function submitEventDialog(ui, fd, submitBtn) {
   const date = String(fd.get('date') || ui.store.getState().selectedDate);
   const call = ui.store.saveEvent({
     event_id: ui.editingId,
@@ -254,7 +249,7 @@ function submitEventDialog(ui, fd, closeDialog, submitBtn) {
   runSafely(ui, call, '日程已保存', {
     trigger: submitBtn,
     onOk: () => {
-      closeDialog();
+      closeFormDialog(ui);
       selectCalendarDate(ui, date);
     }
   });
@@ -263,9 +258,7 @@ function submitEventDialog(ui, fd, closeDialog, submitBtn) {
 export function handleDialogSubmit(ui, event) {
   event.preventDefault();
   const form = ui.doc.querySelector('#active-form');
-  const dialog = ui.doc.querySelector('#form-dialog');
   const submitBtn = form.querySelector('button[type="submit"]');
-  const closeDialog = () => dialog.close();
   const fd = new FormData(form);
   const kind = form.dataset.kind;
   if (kind === 'agent') {
@@ -276,14 +269,14 @@ export function handleDialogSubmit(ui, event) {
       credential: fd.get('credential')
     });
     runSafely(ui, call, 'Agent 配置已保存', {
-      onOk: closeDialog,
+      onOk: () => closeFormDialog(ui),
       trigger: submitBtn
     });
     return;
   }
   if (kind === 'todo') {
-    submitTodoDialog(ui, fd, closeDialog, submitBtn);
+    submitTodoDialog(ui, fd, submitBtn);
     return;
   }
-  submitEventDialog(ui, fd, closeDialog, submitBtn);
+  submitEventDialog(ui, fd, submitBtn);
 }

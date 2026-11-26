@@ -2,7 +2,7 @@ import { CloudRpcError } from '../api/cloud-client.js';
 import { deriveAgentGrants } from '../domain/todo-model.js';
 import { hasScope } from './sync-reducer.js';
 
-export async function refreshAdminLists(ctx, notify) {
+export async function refreshAdminLists(ctx) {
   if (ctx.state.mode !== 'cloud' || !hasScope(ctx.state.identity, '*')) {
     return;
   }
@@ -15,10 +15,10 @@ export async function refreshAdminLists(ctx, notify) {
     agents: agRes.agents || [],
     tokens: tkRes.tokens || []
   };
-  notify(ctx);
+  ctx.notify();
 }
 
-export async function createTokenAction(ctx, spec, notify) {
+export async function createTokenAction(ctx, spec) {
   if (ctx.state.mode !== 'cloud') {
     throw new CloudRpcError(400, 'DEMO_MODE', 'Connect Pocket Cloud first');
   }
@@ -28,26 +28,26 @@ export async function createTokenAction(ctx, spec, notify) {
     scopes: spec.scopes
   });
   ctx.state = { ...ctx.state, lastMintedToken: created };
-  await refreshAdminLists(ctx, notify);
+  await refreshAdminLists(ctx);
   return created;
 }
 
-export async function revokeTokenByIdAction(ctx, tokenId, notify) {
+export async function revokeTokenByIdAction(ctx, tokenId) {
   const res = await ctx.client.callRpc('token.revoke', { token_id: tokenId });
   if (ctx.state.lastMintedToken?.token_id === tokenId) {
     ctx.state = { ...ctx.state, lastMintedToken: null };
   }
-  await refreshAdminLists(ctx, notify);
+  await refreshAdminLists(ctx);
   return res;
 }
 
-export async function createPairingAction(ctx, notify) {
+export async function createPairingAction(ctx) {
   if (ctx.state.mode !== 'cloud') {
     throw new CloudRpcError(400, 'DEMO_MODE', 'Connect Pocket Cloud first');
   }
   const pair = await ctx.client.callRpc('pairing.create', {});
   ctx.state = { ...ctx.state, activePairing: pair };
-  notify(ctx);
+  ctx.notify();
   return pair;
 }
 
@@ -66,7 +66,7 @@ function normalizeAgentDraft(draft) {
   };
 }
 
-export async function saveAgentAction(ctx, draft, notify) {
+export async function saveAgentAction(ctx, draft) {
   const spec = normalizeAgentDraft(draft);
   if (ctx.state.mode !== 'cloud') {
     const next = [
@@ -80,18 +80,18 @@ export async function saveAgentAction(ctx, draft, notify) {
       }
     ];
     ctx.state = { ...ctx.state, agents: next };
-    notify(ctx);
+    ctx.notify();
     return { agent_id: spec.agent_id, active: true };
   }
   const res = await ctx.client.callRpc('agent.set', spec);
-  await refreshAdminLists(ctx, notify);
+  await refreshAdminLists(ctx);
   return res;
 }
 
-export async function revokeAgentAction(ctx, agentId, notify) {
+export async function revokeAgentAction(ctx, agentId) {
   if (ctx.state.mode === 'cloud') {
     await ctx.client.callRpc('agent.revoke', { agent_id: agentId });
-    await refreshAdminLists(ctx, notify);
+    await refreshAdminLists(ctx);
     return;
   }
   ctx.state = {
@@ -100,7 +100,7 @@ export async function revokeAgentAction(ctx, agentId, notify) {
       a.agent_id === agentId ? { ...a, active: false } : a
     ))
   };
-  notify(ctx);
+  ctx.notify();
 }
 
 function buildGrantScopes(canRead, canWrite) {
@@ -114,11 +114,11 @@ function buildGrantScopes(canRead, canWrite) {
   return scopes;
 }
 
-function applyDemoScopeGrant(ctx, agentId, scopes, notify) {
+function applyDemoScopeGrant(ctx, agentId, scopes) {
   const filtered = ctx.state.tokens.filter((t) => t.label !== agentId);
   if (scopes.length === 0) {
     ctx.state = { ...ctx.state, tokens: filtered };
-    notify(ctx);
+    ctx.notify();
     return null;
   }
   const demoTok = {
@@ -129,18 +129,18 @@ function applyDemoScopeGrant(ctx, agentId, scopes, notify) {
     revoked_at: null
   };
   ctx.state = { ...ctx.state, tokens: [...filtered, demoTok] };
-  notify(ctx);
+  ctx.notify();
   return demoTok;
 }
 
-async function runSingleScopeGrant(ctx, agentId, patch, notify) {
+async function runSingleScopeGrant(ctx, agentId, patch) {
   const current = deriveAgentGrants(ctx.state.agents, ctx.state.tokens)
     .find((item) => item.agent_id === agentId);
   const canRead = patch.canRead ?? Boolean(current?.canRead);
   const canWrite = patch.canWrite ?? Boolean(current?.canWrite);
   const scopes = buildGrantScopes(canRead, canWrite);
   if (ctx.state.mode !== 'cloud') {
-    return applyDemoScopeGrant(ctx, agentId, scopes, notify);
+    return applyDemoScopeGrant(ctx, agentId, scopes);
   }
   const oldIds = current?.tokenIds || [];
   for (const tokenId of oldIds) {
@@ -158,13 +158,13 @@ async function runSingleScopeGrant(ctx, agentId, patch, notify) {
     });
     ctx.state = { ...ctx.state, lastMintedToken: minted };
   }
-  await refreshAdminLists(ctx, notify);
+  await refreshAdminLists(ctx);
   return minted;
 }
 
-export function setAgentScopeGrantAction(ctx, agentId, patch, notify) {
+export function setAgentScopeGrantAction(ctx, agentId, patch) {
   const next = ctx.grantChain.then(
-    () => runSingleScopeGrant(ctx, agentId, patch, notify)
+    () => runSingleScopeGrant(ctx, agentId, patch)
   );
   ctx.grantChain = next.catch(() => null);
   return next;

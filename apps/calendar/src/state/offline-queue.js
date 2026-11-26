@@ -124,7 +124,7 @@ function prepareQueuedSaveParams(queue, target, params, existing) {
   return { createdOffline, baseRev, nextParams };
 }
 
-export function recordOfflineEventSave(ctx, params, existing, notify) {
+export function recordOfflineEventSave(ctx, params, existing) {
   const q = normalizeOfflineQueue(ctx.state.offlineQueue);
   const optimistic = buildOptimisticEventSave(params, existing, {
     idPrefix: 'ev',
@@ -152,39 +152,27 @@ export function recordOfflineEventSave(ctx, params, existing, notify) {
     ),
     offlineQueue: nextQueue
   };
-  notify(ctx);
+  ctx.notify();
   return optimistic;
 }
 
 function buildTodoMutationEntry(ctx, todoId, nextParams, meta) {
-  const isDeviceLock = Boolean(nextParams.locked) &&
-    ctx.state.identity?.kind === 'device';
-  if (isDeviceLock) {
-    const lockPayload = { ...nextParams, locked: true };
-    delete lockPayload.base_revision;
-    return {
-      kind: 'lock_override',
-      entityType: 'todo',
-      entityId: todoId,
-      createdOffline: meta.createdOffline,
-      serverBaseRevision: meta.baseRev,
-      todo: lockPayload,
-      snapshot: meta.optimistic
-    };
-  }
-  return {
-    kind: 'rpc',
-    method: 'todo.set',
+  const base = {
     entityType: 'todo',
     entityId: todoId,
     createdOffline: meta.createdOffline,
     serverBaseRevision: meta.baseRev,
-    params: nextParams,
     snapshot: meta.optimistic
   };
+  if (Boolean(nextParams.locked) && ctx.state.identity?.kind === 'device') {
+    const todo = { ...nextParams, locked: true };
+    delete todo.base_revision;
+    return { ...base, kind: 'lock_override', todo };
+  }
+  return { ...base, kind: 'rpc', method: 'todo.set', params: nextParams };
 }
 
-export function recordOfflineTodoSave(ctx, params, existing, notify) {
+export function recordOfflineTodoSave(ctx, params, existing) {
   const q = normalizeOfflineQueue(ctx.state.offlineQueue);
   const optimistic = buildOptimisticTodoSave(params, existing, 'todo');
   const todoId = optimistic.todo_id;
@@ -203,11 +191,11 @@ export function recordOfflineTodoSave(ctx, params, existing, notify) {
     todos: replaceEntityItem(ctx.state.todos, 'todo_id', optimistic),
     offlineQueue: upsertMutation(q, entry, { dropReceipts: !activeMe })
   };
-  notify(ctx);
+  ctx.notify();
   return optimistic;
 }
 
-export function recordOfflineTodoToggle(ctx, existing, notify) {
+export function recordOfflineTodoToggle(ctx, existing) {
   if (!existing) {
     return null;
   }
@@ -217,10 +205,10 @@ export function recordOfflineTodoToggle(ctx, existing, notify) {
     enabled: flags.nextEnabled,
     skip_next: flags.nextSkip
   }, existing, { timezone: ctx.timezone });
-  return recordOfflineTodoSave(ctx, mergedParams, existing, notify);
+  return recordOfflineTodoSave(ctx, mergedParams, existing);
 }
 
-function recordOfflineDelete(ctx, spec, entityId, notify) {
+function recordOfflineDelete(ctx, spec, entityId) {
   const q = normalizeOfflineQueue(ctx.state.offlineQueue);
   const existing = ctx.state[spec.listKey].find(
     (item) => item[spec.idKey] === entityId
@@ -244,23 +232,23 @@ function recordOfflineDelete(ctx, spec, entityId, notify) {
     ),
     offlineQueue: upsertMutation(q, entry, { dropReceipts: true })
   };
-  notify(ctx);
+  ctx.notify();
 }
 
-export function recordOfflineEventDelete(ctx, eventId, notify) {
+export function recordOfflineEventDelete(ctx, eventId) {
   recordOfflineDelete(ctx, {
     entityType: 'event',
     idKey: 'event_id',
     listKey: 'masterEvents',
     method: 'event.delete'
-  }, eventId, notify);
+  }, eventId);
 }
 
-export function recordOfflineTodoDelete(ctx, todoId, notify) {
+export function recordOfflineTodoDelete(ctx, todoId) {
   recordOfflineDelete(ctx, {
     entityType: 'todo',
     idKey: 'todo_id',
     listKey: 'todos',
     method: 'todo.delete'
-  }, todoId, notify);
+  }, todoId);
 }

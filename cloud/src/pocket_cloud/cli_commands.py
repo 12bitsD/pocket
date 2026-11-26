@@ -48,12 +48,28 @@ CURATED_COLUMNS = (
 )
 
 
+def rpc_read(method: str, *param_keys: str):
+    async def handler(args, rt) -> dict:
+        params = {key: getattr(args, key) for key in param_keys}
+        return await rt.rpc.call(method, params)
+
+    return handler
+
+
+def rpc_write(method: str, *param_keys: str):
+    async def handler(args, rt) -> dict:
+        params = {key: getattr(args, key) for key in param_keys}
+        return await rt.rpc.call(method, params, rt.new_request_id())
+
+    return handler
+
+
 def add_domain_parsers(groups, json_parent) -> None:
     add_event_parsers(groups, json_parent)
     add_todo_parsers(groups, json_parent)
     trigger = groups.add_parser("trigger", parents=[json_parent])
     trigger.add_argument("todo_id")
-    trigger.set_defaults(handler=handle_trigger)
+    trigger.set_defaults(handler=rpc_write("todo.trigger", "todo_id"))
 
 
 def add_event_parsers(groups, json_parent) -> None:
@@ -80,7 +96,7 @@ def add_event_parsers(groups, json_parent) -> None:
     add_parser.set_defaults(handler=handle_event_add)
     delete_parser = event.add_parser("delete", parents=[json_parent])
     delete_parser.add_argument("event_id")
-    delete_parser.set_defaults(handler=handle_event_delete)
+    delete_parser.set_defaults(handler=rpc_write("event.delete", "event_id"))
 
 
 def add_todo_parsers(groups, json_parent) -> None:
@@ -88,7 +104,7 @@ def add_todo_parsers(groups, json_parent) -> None:
         dest="action", required=True
     )
     todo.add_parser("list", parents=[json_parent]).set_defaults(
-        handler=handle_todo_list
+        handler=rpc_read("todo.list")
     )
     add_parser = todo.add_parser("add", parents=[json_parent])
     add_parser.add_argument("text")
@@ -99,10 +115,10 @@ def add_todo_parsers(groups, json_parent) -> None:
     add_parser.set_defaults(handler=handle_todo_add)
     toggle_parser = todo.add_parser("toggle", parents=[json_parent])
     toggle_parser.add_argument("todo_id")
-    toggle_parser.set_defaults(handler=handle_todo_toggle)
+    toggle_parser.set_defaults(handler=rpc_write("todo.toggle", "todo_id"))
     delete_parser = todo.add_parser("delete", parents=[json_parent])
     delete_parser.add_argument("todo_id")
-    delete_parser.set_defaults(handler=handle_todo_delete)
+    delete_parser.set_defaults(handler=rpc_write("todo.delete", "todo_id"))
 
 
 def strip_matched_span(raw_text: str, match) -> str:
@@ -168,38 +184,9 @@ async def handle_event_add(args, rt) -> dict:
     return await rt.rpc.call("event.set", params, rt.new_request_id())
 
 
-async def handle_event_delete(args, rt) -> dict:
-    return await rt.rpc.call(
-        "event.delete", dict(event_id=args.event_id), rt.new_request_id()
-    )
-
-
-async def handle_todo_list(args, rt) -> dict:
-    _ = args
-    return await rt.rpc.call("todo.list", dict())
-
-
 async def handle_todo_add(args, rt) -> dict:
     return await rt.rpc.call(
         "todo.set", parse_inline_todo(args), rt.new_request_id()
-    )
-
-
-async def handle_todo_toggle(args, rt) -> dict:
-    return await rt.rpc.call(
-        "todo.toggle", dict(todo_id=args.todo_id), rt.new_request_id()
-    )
-
-
-async def handle_todo_delete(args, rt) -> dict:
-    return await rt.rpc.call(
-        "todo.delete", dict(todo_id=args.todo_id), rt.new_request_id()
-    )
-
-
-async def handle_trigger(args, rt) -> dict:
-    return await rt.rpc.call(
-        "todo.trigger", dict(todo_id=args.todo_id), rt.new_request_id()
     )
 
 

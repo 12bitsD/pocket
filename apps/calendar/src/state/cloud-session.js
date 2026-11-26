@@ -35,10 +35,10 @@ export function stripSensitiveUrlParams(page) {
   window.history.replaceState({ page }, '', `?page=${page}`);
 }
 
-async function openAndSyncLink(ctx, epoch, cursorSpec, notify) {
+async function openAndSyncLink(ctx, epoch, cursorSpec) {
   if (!hasScope(ctx.state.identity, '*')) {
     ctx.state = { ...ctx.state, connectionStatus: 'online' };
-    notify(ctx);
+    ctx.notify();
     return;
   }
   ctx.helloCursor = cursorSpec.cursor;
@@ -59,7 +59,7 @@ async function openAndSyncLink(ctx, epoch, cursorSpec, notify) {
     await ctx.pendingHelloTask;
   } else if (ack) {
     ctx.state = { ...ctx.state, lastSeq: ack.latest_seq };
-    notify(ctx);
+    ctx.notify();
   }
 }
 
@@ -99,7 +99,7 @@ function applyColdSessionState(ctx, auth, boot, same) {
   };
 }
 
-export async function connectCloudSession(ctx, opts, notify, getPublic) {
+export async function connectCloudSession(ctx, opts) {
   const baseUrl = normalizeBaseUrl(opts?.baseUrl);
   const token = String(opts?.token || '').trim();
   ctx.sessionEpoch += 1;
@@ -108,26 +108,26 @@ export async function connectCloudSession(ctx, opts, notify, getPublic) {
   const same = ctx.state.baseUrl === baseUrl && ctx.state.token === token;
   if (canResumeWarmSession(ctx, opts, same)) {
     ctx.state = { ...ctx.state, mode: 'cloud', connectionStatus: 'connecting' };
-    notify(ctx);
+    ctx.notify();
     await openAndSyncLink(ctx, epoch, {
       cursor: ctx.state.lastSeq,
       checkReset: true
-    }, notify);
-    return getPublic(ctx);
+    });
+    return ctx.getPublicState();
   }
   const boot = await loadColdBootstrap(ctx, baseUrl, token, opts);
   if (ctx.sessionEpoch !== epoch) {
-    return getPublic(ctx);
+    return ctx.getPublicState();
   }
   const cursorSpec = applyColdSessionState(
     ctx, { baseUrl, token }, boot, same
   );
-  notify(ctx);
-  await openAndSyncLink(ctx, epoch, cursorSpec, notify);
-  return getPublic(ctx);
+  ctx.notify();
+  await openAndSyncLink(ctx, epoch, cursorSpec);
+  return ctx.getPublicState();
 }
 
-async function runResetResync(ctx, ack, epoch, notify) {
+async function runResetResync(ctx, ack, epoch) {
   ctx.syncBuffer = [];
   let snap = null;
   try {
@@ -143,11 +143,11 @@ async function runResetResync(ctx, ack, epoch, notify) {
         connectionStatus: 'online'
       };
       ctx.state = reapplyOfflineOverlay(applySyncBatch(baseState, buffered));
-      notify(ctx);
+      ctx.notify();
     }
   }
   if (ctx.sessionEpoch === epoch && ctx.state.mode === 'cloud') {
-    await flushOfflineQueue(ctx, notify);
+    await flushOfflineQueue(ctx);
   }
 }
 
@@ -161,7 +161,7 @@ function trackPendingHelloTask(ctx, promise) {
   return task;
 }
 
-export function handleHelloAckSession(ctx, ack, notify) {
+export function handleHelloAckSession(ctx, ack) {
   if (ctx.state.mode !== 'cloud' || !ctx.state.identity) {
     return Promise.resolve();
   }
@@ -170,7 +170,7 @@ export function handleHelloAckSession(ctx, ack, notify) {
   ctx.helloCursor = null;
   if (isReset) {
     return trackPendingHelloTask(
-      ctx, runResetResync(ctx, ack, ctx.sessionEpoch, notify)
+      ctx, runResetResync(ctx, ack, ctx.sessionEpoch)
     );
   }
   const baseState = {
@@ -181,11 +181,11 @@ export function handleHelloAckSession(ctx, ack, notify) {
   ctx.state = reapplyOfflineOverlay(
     applySyncBatch(baseState, ack.catchupFrames || [])
   );
-  notify(ctx);
-  return trackPendingHelloTask(ctx, flushOfflineQueue(ctx, notify));
+  ctx.notify();
+  return trackPendingHelloTask(ctx, flushOfflineQueue(ctx));
 }
 
-export async function claimPairingSession(ctx, opts, notify, getPublic) {
+export async function claimPairingSession(ctx, opts) {
   const baseUrl = normalizeBaseUrl(opts?.baseUrl || ctx.state.baseUrl);
   const code = String(opts?.code || '').trim();
   const name = opts?.name || 'Pocket Phone';
@@ -195,15 +195,12 @@ export async function claimPairingSession(ctx, opts, notify, getPublic) {
     { baseUrl, publicCall: true, source: 'local' }
   );
   await connectCloudSession(
-    ctx,
-    { baseUrl, token: claimed.token, source: 'local' },
-    notify,
-    getPublic
+    ctx, { baseUrl, token: claimed.token, source: 'local' }
   );
   return claimed;
 }
 
-export function disconnectCloudSession(ctx, notify) {
+export function disconnectCloudSession(ctx) {
   ctx.sessionEpoch += 1;
   ctx.syncBuffer = null;
   ctx.pendingHelloTask = null;
@@ -222,7 +219,7 @@ export function disconnectCloudSession(ctx, notify) {
     offlineQueue: EMPTY_OFFLINE_QUEUE,
     ...demo
   };
-  notify(ctx);
+  ctx.notify();
 }
 
 function selectCachedConnection(cached) {

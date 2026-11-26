@@ -127,23 +127,13 @@ export function handleContentSubmit(ui, event) {
   }
 }
 
-function handleAgentGrantClick(ui, target) {
-  const grantRead = target.closest('[data-grant-read]');
-  const grantWrite = target.closest('[data-grant-write]');
-  const btn = grantRead || grantWrite;
-  if (!btn) {
-    return false;
-  }
-  const id = btn.dataset.grantRead || btn.dataset.grantWrite;
-  const cur = ui.store.getState().agentGrants.find((a) => a.agent_id === id);
+function toggleAgentGrant(ui, btn, agentId, field) {
+  const cur = ui.store.getState().agentGrants
+    .find((a) => a.agent_id === agentId);
   if (cur) {
-    const patch = grantRead
-      ? { canRead: !cur.canRead }
-      : { canWrite: !cur.canWrite };
-    const call = ui.store.setAgentScopeGrant(id, patch);
+    const call = ui.store.setAgentScopeGrant(agentId, { [field]: !cur[field] });
     runSafely(ui, call, 'Agent 权限已更新', { trigger: btn });
   }
-  return true;
 }
 
 function copyTokenToClipboard(ui, secret) {
@@ -154,97 +144,6 @@ function copyTokenToClipboard(ui, secret) {
   navigator.clipboard.writeText(secret)
     .then(() => showToast(ui, '已复制到剪贴板'))
     .catch(() => showToast(ui, '复制被拦截，请手动全选复制'));
-}
-
-function handleTokenSettingsClick(ui, target) {
-  const secretBtn = target.closest('[data-toggle-secret]');
-  if (secretBtn) {
-    toggleSecretInput(ui.doc.querySelector('#content'), secretBtn);
-    return true;
-  }
-  const revTok = target.closest('[data-revoke-token]');
-  if (revTok) {
-    const call = ui.store.revokeToken(revTok.dataset.revokeToken);
-    runSafely(ui, call, '令牌已吊销', { trigger: revTok });
-    return true;
-  }
-  const mintBtn = target.closest('[data-mint-web-token]');
-  if (mintBtn) {
-    const call = ui.store.createScopedToken({
-      kind: 'web',
-      label: 'Browser Web'
-    });
-    runSafely(ui, call, '已签发 Web 令牌', { trigger: mintBtn });
-    return true;
-  }
-  const copyTok = target.closest('[data-copy-token]');
-  if (copyTok) {
-    copyTokenToClipboard(ui, copyTok.dataset.copyToken);
-    return true;
-  }
-  if (target.closest('[data-dismiss-token]')) {
-    ui.store.clearMintedToken();
-    return true;
-  }
-  return false;
-}
-
-function handlePermissionClick(ui, target) {
-  const refBtn = target.closest('[data-perm-refresh]');
-  if (refBtn) {
-    const call = ui.store.refreshNativePermissions();
-    runSafely(ui, call, '已完成权限自检', { trigger: refBtn });
-    return true;
-  }
-  const permJump = target.closest('[data-perm-jump]');
-  if (permJump) {
-    const call = ui.store.openNativePermission(permJump.dataset.permJump);
-    runSafely(ui, call, '', { trigger: permJump });
-    return true;
-  }
-  return false;
-}
-
-function handleSettingsClick(ui, target) {
-  const handledSub = handlePermissionClick(ui, target) ||
-    handleAgentGrantClick(ui, target) ||
-    handleTokenSettingsClick(ui, target);
-  if (handledSub) {
-    return true;
-  }
-  const authTab = target.closest('[data-auth-tab]');
-  if (authTab) {
-    ui.prefs.authTab = authTab.dataset.authTab;
-    ui.render();
-    return true;
-  }
-  const pairBtn = target.closest('[data-create-pair]');
-  if (pairBtn) {
-    const call = ui.store.createPairingCode();
-    runSafely(ui, call, '已生成 6 位配对码', { trigger: pairBtn });
-    return true;
-  }
-  if (target.closest('[data-disconnect-cloud]')) {
-    ui.store.disconnectCloud();
-    showToast(ui, '已切回本地演示模式');
-    return true;
-  }
-  if (target.closest('[data-open-agent]')) {
-    ui.openModal('agent', null);
-    return true;
-  }
-  const editAg = target.closest('[data-edit-agent]');
-  if (editAg) {
-    ui.openModal('agent', editAg.dataset.editAgent);
-    return true;
-  }
-  const revAg = target.closest('[data-revoke-agent]');
-  if (revAg) {
-    const call = ui.store.revokeAgent(revAg.dataset.revokeAgent);
-    runSafely(ui, call, '已停用', { trigger: revAg });
-    return true;
-  }
-  return false;
 }
 
 export function stepMonthView(ui, delta) {
@@ -258,67 +157,97 @@ export function selectCalendarDate(ui, iso) {
   const st = ui.store.getState();
   const next = dateViewPatch(iso);
   if (next.viewYear !== st.viewYear || next.viewMonth !== st.viewMonth) {
-    const call = ui.store.refreshMonthRange(
-      next.viewYear, next.viewMonth, iso
-    );
+    const call = ui.store.refreshMonthRange(next.viewYear, next.viewMonth, iso);
     runSafely(ui, call, '');
     return;
   }
   ui.store.setViewState({ focusDate: iso });
 }
 
-function handleCalendarClick(ui, target) {
-  const editEv = target.closest('[data-edit]');
-  if (editEv) {
-    ui.openModal('event', editEv.dataset.edit);
-    return true;
-  }
-  if (target.closest('[data-open-event]')) {
-    ui.openModal('event', null);
-    return true;
-  }
-  const pickDate = target.closest('[data-pick-date]');
-  if (pickDate) {
-    selectCalendarDate(ui, pickDate.dataset.pickDate);
-    return true;
-  }
-  const monthStep = target.closest('[data-month-step]');
-  if (monthStep) {
-    stepMonthView(ui, Number(monthStep.dataset.monthStep));
-    return true;
-  }
-  if (target.closest('[data-month-today]')) {
-    selectCalendarDate(ui, ui.store.getState().todayIso);
-    return true;
-  }
-  return false;
-}
+const CLICK_HANDLERS = [
+  ['[data-perm-refresh]', (ui, btn) => runSafely(
+    ui, ui.store.refreshNativePermissions(), '已完成权限自检', { trigger: btn }
+  )],
+  ['[data-perm-jump]', (ui, btn) => runSafely(
+    ui, ui.store.openNativePermission(btn.dataset.permJump), '',
+    { trigger: btn }
+  )],
+  ['[data-grant-read]', (ui, btn) => toggleAgentGrant(
+    ui, btn, btn.dataset.grantRead, 'canRead'
+  )],
+  ['[data-grant-write]', (ui, btn) => toggleAgentGrant(
+    ui, btn, btn.dataset.grantWrite, 'canWrite'
+  )],
+  ['[data-toggle-secret]', (ui, btn) => toggleSecretInput(
+    ui.doc.querySelector('#content'), btn
+  )],
+  ['[data-revoke-token]', (ui, btn) => runSafely(
+    ui, ui.store.revokeToken(btn.dataset.revokeToken), '令牌已吊销',
+    { trigger: btn }
+  )],
+  ['[data-mint-web-token]', (ui, btn) => runSafely(
+    ui,
+    ui.store.createScopedToken({ kind: 'web', label: 'Browser Web' }),
+    '已签发 Web 令牌',
+    { trigger: btn }
+  )],
+  ['[data-copy-token]', (ui, btn) => copyTokenToClipboard(
+    ui, btn.dataset.copyToken
+  )],
+  ['[data-dismiss-token]', (ui) => ui.store.clearMintedToken()],
+  ['[data-auth-tab]', (ui, btn) => {
+    ui.prefs.authTab = btn.dataset.authTab;
+    ui.render();
+  }],
+  ['[data-create-pair]', (ui, btn) => runSafely(
+    ui, ui.store.createPairingCode(), '已生成 6 位配对码', { trigger: btn }
+  )],
+  ['[data-disconnect-cloud]', (ui) => {
+    ui.store.disconnectCloud();
+    showToast(ui, '已切回本地演示模式');
+  }],
+  ['[data-open-agent]', (ui) => ui.openModal('agent', null)],
+  ['[data-edit-agent]', (ui, btn) => ui.openModal(
+    'agent', btn.dataset.editAgent
+  )],
+  ['[data-revoke-agent]', (ui, btn) => runSafely(
+    ui, ui.store.revokeAgent(btn.dataset.revokeAgent), '已停用',
+    { trigger: btn }
+  )],
+  ['[data-edit]', (ui, btn) => ui.openModal('event', btn.dataset.edit)],
+  ['[data-open-event]', (ui) => ui.openModal('event', null)],
+  ['[data-pick-date]', (ui, btn) => selectCalendarDate(
+    ui, btn.dataset.pickDate
+  )],
+  ['[data-month-step]', (ui, btn) => stepMonthView(
+    ui, Number(btn.dataset.monthStep)
+  )],
+  ['[data-month-today]', (ui) => selectCalendarDate(
+    ui, ui.store.getState().todayIso
+  )],
+  ['[data-quick-target]', (ui, btn) => {
+    ui.composer.target = btn.dataset.quickTarget;
+    ui.render();
+  }],
+  ['[data-toggle-todo], [data-switch-todo]', (ui, btn) => {
+    const id = btn.dataset.toggleTodo || btn.dataset.switchTodo;
+    runSafely(ui, ui.store.toggleTodo(id), '', { trigger: btn });
+  }],
+  ['[data-trigger-todo]', (ui, btn) => runSafely(
+    ui,
+    ui.store.triggerAgentTodo(btn.dataset.triggerTodo),
+    '已触发投递',
+    { trigger: btn }
+  )],
+  ['[data-edit-todo]', (ui, btn) => ui.openModal('todo', btn.dataset.editTodo)]
+];
 
 export function handleContentClick(ui, event) {
-  const target = event.target;
-  if (handleSettingsClick(ui, target) || handleCalendarClick(ui, target)) {
-    return;
-  }
-  const qTarget = target.closest('[data-quick-target]');
-  if (qTarget) {
-    ui.composer.target = qTarget.dataset.quickTarget;
-    ui.render();
-    return;
-  }
-  const togTodo = target.closest('[data-toggle-todo], [data-switch-todo]');
-  if (togTodo) {
-    const id = togTodo.dataset.toggleTodo || togTodo.dataset.switchTodo;
-    runSafely(ui, ui.store.toggleTodo(id), '', { trigger: togTodo });
-    return;
-  }
-  const trigTd = target.closest('[data-trigger-todo]');
-  if (trigTd) {
-    const call = ui.store.triggerAgentTodo(trigTd.dataset.triggerTodo);
-    runSafely(ui, call, '已触发投递', { trigger: trigTd });
-    return;
-  }
-  const editTd = target.closest('[data-edit-todo]');
-  if (editTd) {
-    ui.openModal('todo', editTd.dataset.editTodo);
+  for (const [selector, handler] of CLICK_HANDLERS) {
+    const btn = event.target.closest(selector);
+    if (btn) {
+      handler(ui, btn);
+      return;
+    }
   }
 }

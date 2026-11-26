@@ -32,6 +32,31 @@ import {
   upsertByRevision
 } from './sync-reducer.js';
 
+const ENTITY_SPECS = Object.freeze({
+  event: Object.freeze({
+    listKey: 'masterEvents',
+    idKey: 'event_id',
+    deleteMethod: 'event.delete',
+    recordOfflineDelete: recordOfflineEventDelete
+  }),
+  todo: Object.freeze({
+    listKey: 'todos',
+    idKey: 'todo_id',
+    deleteMethod: 'todo.delete',
+    recordOfflineDelete: recordOfflineTodoDelete
+  })
+});
+
+function commitUpsert(ctx, kind, item) {
+  const { listKey, idKey } = ENTITY_SPECS[kind];
+  ctx.state = {
+    ...ctx.state,
+    [listKey]: upsertByRevision(ctx.state[listKey], idKey, item)
+  };
+  ctx.notify();
+  return item;
+}
+
 async function callWriteWithConflictSync(ctx, method, params) {
   try {
     return await ctx.client.callRpc(method, params);
@@ -43,37 +68,59 @@ async function callWriteWithConflictSync(ctx, method, params) {
   }
 }
 
-function scheduleFlushIfOnline(ctx, notify) {
+function runOfflinePath(ctx, spec) {
+  const queuedVal = spec.onOffline();
   if (ctx.state.connectionStatus === 'online' && !ctx.flushingOffline) {
-    flushOfflineQueue(ctx, notify);
+    flushOfflineQueue(ctx);
   }
+  return { offline: true, value: queuedVal };
 }
 
-async function runCloudWriteWithOffline(ctx, spec, notify) {
+async function runCloudWriteWithOffline(ctx, spec) {
   if (shouldBypassRpcOffline(ctx, spec.entityType, spec.entityId)) {
-    const queuedVal = spec.onOffline();
-    scheduleFlushIfOnline(ctx, notify);
-    return { offline: true, value: queuedVal };
+    return runOfflinePath(ctx, spec);
   }
-  let result = null;
-  let rpcErr = null;
   try {
-    result = await callWriteWithConflictSync(ctx, spec.method, spec.params);
+    const value = await callWriteWithConflictSync(
+      ctx, spec.method, spec.params
+    );
+    return { offline: false, value };
   } catch (err) {
-    rpcErr = err;
+    if (isOfflineFallbackError(ctx, err)) {
+      return runOfflinePath(ctx, spec);
+    }
+    throw err;
   }
-  if (!rpcErr) {
-    return { offline: false, value: result };
-  }
-  if (isOfflineFallbackError(ctx, rpcErr)) {
-    const queuedVal = spec.onOffline();
-    scheduleFlushIfOnline(ctx, notify);
-    return { offline: true, value: queuedVal };
-  }
-  throw rpcErr;
 }
 
-export async function saveEventAction(ctx, draft, notify) {
+async function removeEntityAction(ctx, kind, rawId) {
+  const spec = ENTITY_SPECS[kind];
+  const id = String(rawId);
+  const existing = ctx.state[spec.listKey].find(
+    (item) => item[spec.idKey] === id
+  );
+  if (ctx.state.mode === 'cloud') {
+    const out = await runCloudWriteWithOffline(ctx, {
+      entityType: kind,
+      entityId: id,
+      method: spec.deleteMethod,
+      params: { [spec.idKey]: id, base_revision: existing?.revision },
+      onOffline: () => spec.recordOfflineDelete(ctx, id)
+    });
+    if (out.offline) {
+      return;
+    }
+  }
+  ctx.state = {
+    ...ctx.state,
+    [spec.listKey]: deleteByRevision(
+      ctx.state[spec.listKey], spec.idKey, id, null
+    )
+  };
+  ctx.notify();
+}
+
+export async function saveEventAction(ctx, draft) {
   const editId = draft.event_id || draft.id || null;
   const existing = editId
     ? ctx.state.masterEvents.find((e) => e.event_id === String(editId))
@@ -83,58 +130,27 @@ export async function saveEventAction(ctx, draft, notify) {
     const localEv = buildOptimisticEventSave(params, existing, {
       idPrefix: 'demo_ev'
     });
-    ctx.state = {
-      ...ctx.state,
-      masterEvents: upsertByRevision(
-        ctx.state.masterEvents, 'event_id', localEv
-      )
-    };
-    notify(ctx);
-    return localEv;
+    return commitUpsert(ctx, 'event', localEv);
   }
-  const outcome = await runCloudWriteWithOffline(ctx, {
+  const out = await runCloudWriteWithOffline(ctx, {
     entityType: 'event',
     entityId: existing?.event_id || null,
     method: 'event.set',
     params,
-    onOffline: () => recordOfflineEventSave(ctx, params, existing, notify)
-  }, notify);
-  if (outcome.offline) {
-    return outcome.value;
+    onOffline: () => recordOfflineEventSave(ctx, params, existing)
+  });
+  if (out.offline) {
+    return out.value;
   }
-  ctx.state = {
-    ...ctx.state,
-    masterEvents: upsertByRevision(
-      ctx.state.masterEvents, 'event_id', toMasterEvent(outcome.value)
-    )
-  };
-  notify(ctx);
-  return outcome.value;
+  commitUpsert(ctx, 'event', toMasterEvent(out.value));
+  return out.value;
 }
 
-export async function removeEventAction(ctx, eventId, notify) {
-  const id = String(eventId);
-  const existing = ctx.state.masterEvents.find((e) => e.event_id === id);
-  if (ctx.state.mode === 'cloud') {
-    const outcome = await runCloudWriteWithOffline(ctx, {
-      entityType: 'event',
-      entityId: id,
-      method: 'event.delete',
-      params: { event_id: id, base_revision: existing?.revision },
-      onOffline: () => recordOfflineEventDelete(ctx, id, notify)
-    }, notify);
-    if (outcome.offline) {
-      return;
-    }
-  }
-  ctx.state = {
-    ...ctx.state,
-    masterEvents: deleteByRevision(ctx.state.masterEvents, 'event_id', id, null)
-  };
-  notify(ctx);
+export function removeEventAction(ctx, eventId) {
+  return removeEntityAction(ctx, 'event', eventId);
 }
 
-export async function saveTodoAction(ctx, draft, notify) {
+export async function saveTodoAction(ctx, draft) {
   const editId = draft.todo_id || draft.id || null;
   const existing = editId
     ? ctx.state.todos.find((t) => t.todo_id === String(editId))
@@ -145,99 +161,59 @@ export async function saveTodoAction(ctx, draft, notify) {
   });
   if (ctx.state.mode !== 'cloud') {
     const localTd = buildOptimisticTodoSave(params, existing, 'demo_td');
-    ctx.state = {
-      ...ctx.state,
-      todos: upsertByRevision(ctx.state.todos, 'todo_id', localTd)
-    };
-    notify(ctx);
-    return localTd;
+    return commitUpsert(ctx, 'todo', localTd);
   }
-  const outcome = await runCloudWriteWithOffline(ctx, {
+  const out = await runCloudWriteWithOffline(ctx, {
     entityType: 'todo',
     entityId: existing?.todo_id || null,
     method: 'todo.set',
     params,
-    onOffline: () => recordOfflineTodoSave(ctx, params, existing, notify)
-  }, notify);
-  if (outcome.offline) {
-    return outcome.value;
+    onOffline: () => recordOfflineTodoSave(ctx, params, existing)
+  });
+  if (out.offline) {
+    return out.value;
   }
-  ctx.state = {
-    ...ctx.state,
-    todos: upsertByRevision(ctx.state.todos, 'todo_id', outcome.value)
-  };
-  notify(ctx);
-  return outcome.value;
+  return commitUpsert(ctx, 'todo', out.value);
 }
 
-export async function toggleTodoAction(ctx, todoId, notify) {
+export async function toggleTodoAction(ctx, todoId) {
   const id = String(todoId);
   const existing = ctx.state.todos.find((t) => t.todo_id === id);
   if (ctx.state.mode !== 'cloud') {
     if (!existing) {
       return null;
     }
-    const updated = buildOptimisticTodoToggle(existing);
-    ctx.state = {
-      ...ctx.state,
-      todos: upsertByRevision(ctx.state.todos, 'todo_id', updated)
-    };
-    notify(ctx);
-    return updated;
+    return commitUpsert(ctx, 'todo', buildOptimisticTodoToggle(existing));
   }
-  const outcome = await runCloudWriteWithOffline(ctx, {
+  const out = await runCloudWriteWithOffline(ctx, {
     entityType: 'todo',
     entityId: id,
     method: 'todo.toggle',
     params: { todo_id: id, base_revision: existing?.revision },
-    onOffline: () => recordOfflineTodoToggle(ctx, existing, notify)
-  }, notify);
-  if (outcome.offline) {
-    return outcome.value;
+    onOffline: () => recordOfflineTodoToggle(ctx, existing)
+  });
+  if (out.offline) {
+    return out.value;
   }
-  ctx.state = {
-    ...ctx.state,
-    todos: upsertByRevision(ctx.state.todos, 'todo_id', outcome.value)
-  };
-  notify(ctx);
-  return outcome.value;
+  return commitUpsert(ctx, 'todo', out.value);
 }
 
-export async function toggleSkipNextAction(ctx, todoId, notify) {
+export async function toggleSkipNextAction(ctx, todoId) {
   const existing = ctx.state.todos.find((t) => t.todo_id === String(todoId));
   if (!existing) {
     return null;
   }
-  return saveTodoAction(
-    ctx,
-    { todo_id: existing.todo_id, skip_next: !existing.skip_next },
-    notify
-  );
+  return saveTodoAction(ctx, {
+    todo_id: existing.todo_id,
+    skip_next: !existing.skip_next
+  });
 }
 
-export async function removeTodoAction(ctx, todoId, notify) {
-  const id = String(todoId);
-  const existing = ctx.state.todos.find((t) => t.todo_id === id);
-  if (ctx.state.mode === 'cloud') {
-    const outcome = await runCloudWriteWithOffline(ctx, {
-      entityType: 'todo',
-      entityId: id,
-      method: 'todo.delete',
-      params: { todo_id: id, base_revision: existing?.revision },
-      onOffline: () => recordOfflineTodoDelete(ctx, id, notify)
-    }, notify);
-    if (outcome.offline) {
-      return;
-    }
-  }
-  ctx.state = {
-    ...ctx.state,
-    todos: deleteByRevision(ctx.state.todos, 'todo_id', id, null)
-  };
-  notify(ctx);
+export function removeTodoAction(ctx, todoId) {
+  return removeEntityAction(ctx, 'todo', todoId);
 }
 
-export async function triggerAgentTodoAction(ctx, todoId, notify) {
+export async function triggerAgentTodoAction(ctx, todoId) {
   if (ctx.state.mode !== 'cloud') {
     throw new CloudRpcError(400, 'DEMO_MODE', 'Connect Pocket Cloud first');
   }
@@ -248,7 +224,7 @@ export async function triggerAgentTodoAction(ctx, todoId, notify) {
     ...ctx.state,
     todos: mergeTodoList(ctx.state.todos, tdRes.todos)
   };
-  notify(ctx);
+  ctx.notify();
   return result;
 }
 
@@ -267,7 +243,7 @@ function resolveMonthSelectedDate(ctx, year, month, explicitDate) {
   return `${prefix}01`;
 }
 
-export async function refreshMonthRangeAction(ctx, monthSpec, notify) {
+export async function refreshMonthRangeAction(ctx, monthSpec) {
   const targetYear = monthSpec.year;
   const targetMonth = monthSpec.month;
   const selectedDate = resolveMonthSelectedDate(
@@ -279,7 +255,7 @@ export async function refreshMonthRangeAction(ctx, monthSpec, notify) {
     viewYear: targetYear,
     viewMonth: targetMonth
   };
-  notify(ctx);
+  ctx.notify();
   const canRead = ctx.state.mode === 'cloud' &&
     hasScope(ctx.state.identity, 'event.read');
   if (!canRead || shouldBypassRpcOffline(ctx, 'event', null)) {
@@ -298,5 +274,5 @@ export async function refreshMonthRangeAction(ctx, monthSpec, notify) {
     ...ctx.state,
     masterEvents: mergeMasterEvents(ctx.state.masterEvents, res.events || [])
   };
-  notify(ctx);
+  ctx.notify();
 }

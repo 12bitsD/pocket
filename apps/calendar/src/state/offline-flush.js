@@ -50,7 +50,7 @@ function applyLocalAlarmStatus(state, entityType, entityId, status) {
   return { ...state, [listKey]: nextList };
 }
 
-function enqueueAlarmReceipt(ctx, rec, notify) {
+function enqueueAlarmReceipt(ctx, rec) {
   const q = normalizeOfflineQueue(ctx.state.offlineQueue);
   const filtered = dropEntityReceipts(q.receipts, rec.entityType, rec.entityId);
   filtered.push(rec);
@@ -60,9 +60,9 @@ function enqueueAlarmReceipt(ctx, rec, notify) {
     ),
     offlineQueue: { mutations: q.mutations, receipts: filtered }
   };
-  notify(ctx);
+  ctx.notify();
   if (ctx.state.connectionStatus === 'online' && !ctx.flushingOffline) {
-    flushOfflineQueue(ctx, notify);
+    flushOfflineQueue(ctx);
   }
   return {
     type: 'QUEUED_OFFLINE',
@@ -99,27 +99,21 @@ function sendRawReceiptFrame(ctx, rec) {
   });
 }
 
-async function sendLiveReceiptOrFallback(ctx, rec, notify) {
-  let ack = null;
-  let sendErr = null;
+async function sendLiveReceiptOrFallback(ctx, rec) {
   try {
-    ack = await sendRawReceiptFrame(ctx, rec);
+    return await sendRawReceiptFrame(ctx, rec);
   } catch (err) {
-    sendErr = err;
+    if (isOfflineFallbackError(ctx, err)) {
+      return enqueueAlarmReceipt(ctx, rec);
+    }
+    if (BENIGN_RECEIPT_CODES.includes(err.code)) {
+      return { type: 'SKIPPED_STALE', code: err.code };
+    }
+    throw err;
   }
-  if (!sendErr) {
-    return ack;
-  }
-  if (isOfflineFallbackError(ctx, sendErr)) {
-    return enqueueAlarmReceipt(ctx, rec, notify);
-  }
-  if (BENIGN_RECEIPT_CODES.includes(sendErr.code)) {
-    return { type: 'SKIPPED_STALE', code: sendErr.code };
-  }
-  throw sendErr;
 }
 
-export async function dispatchOrQueueAlarmReceipt(ctx, rawRec, notify) {
+export async function dispatchOrQueueAlarmReceipt(ctx, rawRec) {
   const rec = normalizeReceiptInput(rawRec);
   const eligible = isReceiptEligibleInState(
     ctx.state, rec.entityType, rec.entityId
@@ -132,15 +126,15 @@ export async function dispatchOrQueueAlarmReceipt(ctx, rawRec, notify) {
     ctx.state, rec.entityType, rec.entityId, rec.status
   );
   if (ctx.state !== prevState) {
-    notify(ctx);
+    ctx.notify();
   }
   if (ctx.state.mode !== 'cloud') {
     return { type: 'LOCAL_RECEIPT', status: rec.status };
   }
   if (shouldHoldReceiptInQueue(ctx, rec) && canUseOfflineQueue(ctx)) {
-    return enqueueAlarmReceipt(ctx, rec, notify);
+    return enqueueAlarmReceipt(ctx, rec);
   }
-  return sendLiveReceiptOrFallback(ctx, rec, notify);
+  return sendLiveReceiptOrFallback(ctx, rec);
 }
 
 export function reapplyOfflineOverlay(state) {
@@ -208,47 +202,44 @@ function applyRpcFlushResult(ctx, item, res) {
 
 async function flushNextMutation(ctx, item, stats) {
   let res = null;
-  let flushErr = null;
   try {
     res = item.kind === 'lock_override'
       ? await ctx.client.sendWsFrame({ type: 'LOCK_OVERRIDE', todo: item.todo })
       : await ctx.client.callRpc(item.method, item.params);
   } catch (err) {
-    flushErr = err;
-  }
-  if (flushErr && isOfflineFallbackError(ctx, flushErr)) {
-    return false;
-  }
-  if (!flushErr && item.kind === 'rpc') {
-    applyRpcFlushResult(ctx, item, res);
-  } else if (flushErr) {
+    if (isOfflineFallbackError(ctx, err)) {
+      return 'pause';
+    }
     stats.hadConflictOrMissing = true;
+    dropQueueEntry(ctx, 'mutation', item);
+    return 'continue';
+  }
+  if (item.kind === 'rpc') {
+    applyRpcFlushResult(ctx, item, res);
   }
   dropQueueEntry(ctx, 'mutation', item);
-  return true;
+  return 'continue';
 }
 
 async function flushNextReceipt(ctx, rec) {
   if (!isReceiptEligibleInState(ctx.state, rec.entityType, rec.entityId)) {
     dropQueueEntry(ctx, 'receipt', rec);
-    return true;
+    return 'continue';
   }
-  let sendErr = null;
   try {
     await sendRawReceiptFrame(ctx, rec);
   } catch (err) {
-    sendErr = err;
-  }
-  if (sendErr && isOfflineFallbackError(ctx, sendErr)) {
-    return false;
+    if (isOfflineFallbackError(ctx, err)) {
+      return 'pause';
+    }
+    dropQueueEntry(ctx, 'receipt', rec);
+    return 'continue';
   }
   dropQueueEntry(ctx, 'receipt', rec);
-  if (!sendErr) {
-    ctx.state = applyLocalAlarmStatus(
-      ctx.state, rec.entityType, rec.entityId, rec.status
-    );
-  }
-  return true;
+  ctx.state = applyLocalAlarmStatus(
+    ctx.state, rec.entityType, rec.entityId, rec.status
+  );
+  return 'continue';
 }
 
 async function drainOfflineQueueItems(ctx, stats) {
@@ -259,16 +250,16 @@ async function drainOfflineQueueItems(ctx, stats) {
     const q = normalizeOfflineQueue(ctx.state.offlineQueue);
     const nextLock = q.mutations.find((m) => m.kind === 'lock_override');
     const nextMut = nextLock || q.mutations[0] || null;
-    const ok = nextMut
+    const step = nextMut
       ? await flushNextMutation(ctx, nextMut, stats)
       : await flushNextReceipt(ctx, q.receipts[0]);
-    if (!ok) {
+    if (step === 'pause') {
       return;
     }
   }
 }
 
-export function flushOfflineQueue(ctx, notify) {
+export function flushOfflineQueue(ctx) {
   if (!hasPendingOfflineItems(ctx.state.offlineQueue) ||
       ctx.state.mode !== 'cloud') {
     return Promise.resolve();
@@ -284,7 +275,7 @@ export function flushOfflineQueue(ctx, notify) {
     } finally {
       ctx.flushingOffline = false;
       ctx.state = reapplyOfflineOverlay(ctx.state);
-      notify(ctx);
+      ctx.notify();
     }
     const shouldResync = stats.hadConflictOrMissing &&
       typeof ctx.resyncSnapshot === 'function';

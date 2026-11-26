@@ -88,7 +88,7 @@ function attachStoreClient(ctx, options) {
       notifySubscribers(ctx);
     },
     onHelloAck: (ack) => {
-      handleHelloAckSession(ctx, ack, notifySubscribers).catch((err) => {
+      handleHelloAckSession(ctx, ack).catch((err) => {
         ctx.lastBootError = err;
       });
     },
@@ -115,63 +115,38 @@ function updateViewPatch(ctx, patch) {
   notifySubscribers(ctx);
 }
 
-function buildDataMethods(ctx) {
-  return {
-    refreshMonthRange: (year, month, selectedDate) => refreshMonthRangeAction(
-      ctx, { year, month, selectedDate }, notifySubscribers
-    ),
-    saveEvent: (draft) => saveEventAction(ctx, draft, notifySubscribers),
-    removeEvent: (id) => removeEventAction(ctx, id, notifySubscribers),
-    saveTodo: (draft) => saveTodoAction(ctx, draft, notifySubscribers),
-    toggleTodo: (id) => toggleTodoAction(ctx, id, notifySubscribers),
-    toggleSkipNext: (id) => toggleSkipNextAction(ctx, id, notifySubscribers),
-    removeTodo: (id) => removeTodoAction(ctx, id, notifySubscribers),
-    triggerAgentTodo: (id) => triggerAgentTodoAction(
-      ctx, id, notifySubscribers
-    )
-  };
-}
+const BOUND_ACTIONS = Object.freeze({
+  saveEvent: saveEventAction,
+  removeEvent: removeEventAction,
+  saveTodo: saveTodoAction,
+  toggleTodo: toggleTodoAction,
+  toggleSkipNext: toggleSkipNextAction,
+  removeTodo: removeTodoAction,
+  triggerAgentTodo: triggerAgentTodoAction,
+  connectCloud: connectCloudSession,
+  claimPairing: claimPairingSession,
+  disconnectCloud: disconnectCloudSession,
+  createPairingCode: createPairingAction,
+  saveAgent: saveAgentAction,
+  revokeAgent: revokeAgentAction,
+  setAgentScopeGrant: setAgentScopeGrantAction,
+  createScopedToken: createTokenAction,
+  revokeToken: revokeTokenByIdAction,
+  sendAlarmReceipt: dispatchOrQueueAlarmReceipt,
+  refreshAdminSnapshot: refreshAdminLists
+});
 
-function buildAdminAndWsMethods(ctx) {
-  return {
-    connectCloud: (opts) => connectCloudSession(
-      ctx, opts, notifySubscribers, selectPublicState
-    ),
-    claimPairing: (opts) => claimPairingSession(
-      ctx, opts, notifySubscribers, selectPublicState
-    ),
-    disconnectCloud: () => disconnectCloudSession(ctx, notifySubscribers),
-    createPairingCode: () => createPairingAction(ctx, notifySubscribers),
-    saveAgent: (draft) => saveAgentAction(ctx, draft, notifySubscribers),
-    revokeAgent: (id) => revokeAgentAction(ctx, id, notifySubscribers),
-    setAgentScopeGrant: (id, patch) => setAgentScopeGrantAction(
-      ctx, id, patch, notifySubscribers
-    ),
-    createScopedToken: (spec) => createTokenAction(
-      ctx, spec, notifySubscribers
-    ),
-    revokeToken: (tokenId) => revokeTokenByIdAction(
-      ctx, tokenId, notifySubscribers
-    ),
-    sendAlarmReceipt: (rec) => dispatchOrQueueAlarmReceipt(
-      ctx, rec, notifySubscribers
-    ),
-    setPowerState: (patch) => {
-      if (patch?.hidden) {
-        ctx.persistence.flushNow();
-      }
-      ctx.client.setPowerState(patch);
-    },
-    flushPersistence: () => ctx.persistence.flushNow(),
-    refreshAdminSnapshot: () => refreshAdminLists(ctx, notifySubscribers),
-    refreshNativePermissions: () => ctx.alarmBridge.refreshPermissions(),
-    openNativePermission: (target) => ctx.alarmBridge.openPermission(target),
-    drainNativeRingingEvents: () => ctx.alarmBridge.drainRingingEvents()
-  };
+function bindActions(ctx) {
+  const out = {};
+  for (const [name, fn] of Object.entries(BOUND_ACTIONS)) {
+    out[name] = fn.bind(null, ctx);
+  }
+  return out;
 }
 
 function buildStoreApi(ctx) {
   return Object.freeze({
+    ...bindActions(ctx),
     getState: () => selectPublicState(ctx),
     subscribe: (fn) => {
       ctx.listeners.add(fn);
@@ -194,8 +169,19 @@ function buildStoreApi(ctx) {
       ctx.state = { ...ctx.state, lastMintedToken: null };
       notifySubscribers(ctx);
     },
-    ...buildDataMethods(ctx),
-    ...buildAdminAndWsMethods(ctx)
+    refreshMonthRange: (year, month, selectedDate) => refreshMonthRangeAction(
+      ctx, { year, month, selectedDate }
+    ),
+    setPowerState: (patch) => {
+      if (patch?.hidden) {
+        ctx.persistence.flushNow();
+      }
+      ctx.client.setPowerState(patch);
+    },
+    flushPersistence: () => ctx.persistence.flushNow(),
+    refreshNativePermissions: () => ctx.alarmBridge.refreshPermissions(),
+    openNativePermission: (target) => ctx.alarmBridge.openPermission(target),
+    drainNativeRingingEvents: () => ctx.alarmBridge.drainRingingEvents()
   });
 }
 
@@ -222,25 +208,17 @@ function startInitialCloudBoot(ctx, query) {
   if (query.cloudUrl && query.token) {
     stripSensitiveUrlParams(query.page);
     ctx.bootPromise = connectCloudSession(
-      ctx,
-      { baseUrl: query.cloudUrl, token: query.token },
-      notifySubscribers,
-      selectPublicState
+      ctx, { baseUrl: query.cloudUrl, token: query.token }
     ).catch((err) => handleBootFailure(ctx, err));
     return;
   }
   if (ctx.state.mode === 'cloud') {
-    ctx.bootPromise = connectCloudSession(
-      ctx,
-      {
-        baseUrl: ctx.state.baseUrl,
-        token: ctx.state.token,
-        source: ctx.state.identity?.source,
-        resumeCached: true
-      },
-      notifySubscribers,
-      selectPublicState
-    ).catch((err) => handleBootFailure(ctx, err));
+    ctx.bootPromise = connectCloudSession(ctx, {
+      baseUrl: ctx.state.baseUrl,
+      token: ctx.state.token,
+      source: ctx.state.identity?.source,
+      resumeCached: true
+    }).catch((err) => handleBootFailure(ctx, err));
   }
 }
 
@@ -283,6 +261,8 @@ export function createAppStore(options) {
     flushingOffline: false,
     flushChain: Promise.resolve(),
     grantChain: Promise.resolve(),
+    notify: () => notifySubscribers(ctx),
+    getPublicState: () => selectPublicState(ctx),
     resyncSnapshot: () => resyncCloudSnapshot(ctx)
   };
   attachStoreClient(ctx, options);
@@ -291,9 +271,7 @@ export function createAppStore(options) {
     () => ctx.persistence.flushNow()
   );
   const api = buildStoreApi(ctx);
-  ctx.alarmBridge = attachNativeAlarmBridge(
-    ctx, api, options, notifySubscribers
-  );
+  ctx.alarmBridge = attachNativeAlarmBridge(ctx, api, options);
   startInitialCloudBoot(ctx, boot.query);
   return api;
 }

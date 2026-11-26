@@ -130,31 +130,39 @@ class RingingActivity : Activity() {
         return root
     }
 
-    private fun appendHeaderAndClock(root: LinearLayout) {
-        val ttyHeader = TextView(this).apply {
-            text = "$ pocket/clock --ring"
+    private fun monoText(
+        sizeSp: Float,
+        colorRes: Int,
+        initial: String = ""
+    ): TextView {
+        return TextView(this).apply {
+            text = initial
             typeface = Typeface.MONOSPACE
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
-            setTextColor(getColor(R.color.paperMuted))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
+            setTextColor(getColor(colorRes))
             fontFeatureSettings = "tnum"
         }
-        val stampBadge = TextView(this).apply {
-            text = "ALARM RINGING"
-            typeface = Typeface.MONOSPACE
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f)
-            setTextColor(getColor(R.color.vermilionTextDark))
-            fontFeatureSettings = "tnum"
+    }
+
+    private fun appendHeaderAndClock(root: LinearLayout) {
+        val ttyHeader = monoText(
+            12f,
+            R.color.paperMuted,
+            "\$ pocket/clock --ring"
+        )
+        val stampBadge = monoText(
+            11.5f,
+            R.color.vermilionTextDark,
+            "ALARM RINGING"
+        ).apply {
             background = buildVermilionStampBackground()
             setPadding(dp(10), dp(4), dp(10), dp(4))
         }
-        clockView = TextView(this).apply {
-            text = LocalTime.now().format(HH_MM_FMT)
-            typeface = Typeface.MONOSPACE
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 68f)
-            setTextColor(getColor(R.color.paperInk))
-            fontFeatureSettings = "tnum"
-            letterSpacing = -0.04f
-        }
+        clockView = monoText(
+            68f,
+            R.color.paperInk,
+            LocalTime.now().format(HH_MM_FMT)
+        ).apply { letterSpacing = -0.04f }
         root.addView(ttyHeader, linearParams(WRAP, WRAP, 16))
         root.addView(stampBadge, linearParams(WRAP, WRAP, 18))
         root.addView(clockView, linearParams(MATCH, WRAP, 18))
@@ -170,12 +178,7 @@ class RingingActivity : Activity() {
             setTextColor(getColor(R.color.paperInk))
             setLineSpacing(0f, 1.35f)
         }
-        subtitleView = TextView(this).apply {
-            typeface = Typeface.MONOSPACE
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-            setTextColor(getColor(R.color.paperMuted))
-            fontFeatureSettings = "tnum"
-        }
+        subtitleView = monoText(13f, R.color.paperMuted)
         root.addView(ruleTop, linearParams(MATCH, dp(1), 18))
         root.addView(titleView, linearParams(MATCH, WRAP, 6))
         root.addView(subtitleView, linearParams(MATCH, WRAP, 36))
