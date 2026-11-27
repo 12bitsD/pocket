@@ -235,7 +235,7 @@ test('escapes XSS sinks and enforces single-hero-card rule', () => {
     tokens: []
   };
   const tty = buildTtyBarHtml(demoState);
-  assert.equal(tty.statHtml.includes('DEMO · LOCAL'), true);
+  assert.equal(tty.statHtml, '');
   const agendaHtml = renderAgendaView(
     demoState, Date.parse('2026-11-24T08:00:00')
   );

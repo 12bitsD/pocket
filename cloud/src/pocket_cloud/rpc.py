@@ -10,6 +10,14 @@ from .auth import authenticate_raw_conn
 from .bootstrap_svc import bootstrap_snapshot
 from .calendar_svc import delete_event, list_events, set_event
 from .errors import RpcError
+from .feishu_sync import (
+    configure_feishu,
+    create_feishu_auth_url,
+    list_integrations,
+    mirror_event_to_feishu,
+    sync_feishu_rpc,
+    unbind_feishu,
+)
 from .pairing import (
     PairingAttemptFailed,
     claim_pairing,
@@ -28,10 +36,11 @@ READ_METHODS = (
     "sync.bootstrap",
     "token.list",
     "agent.list",
+    "integration.list",
     "event.list",
     "todo.list",
 )
-STANDALONE_WRITE_METHODS = ("todo.trigger",)
+STANDALONE_WRITE_METHODS = ("todo.trigger", "integration.feishu.sync")
 ADMIN_METHODS = (
     "pairing.create",
     "token.create",
@@ -40,6 +49,11 @@ ADMIN_METHODS = (
     "agent.set",
     "agent.list",
     "agent.revoke",
+    "integration.list",
+    "integration.feishu.configure",
+    "integration.feishu.auth_url",
+    "integration.feishu.sync",
+    "integration.feishu.unbind",
 )
 SCOPED_METHODS = MappingProxyType(
     {
@@ -85,6 +99,11 @@ HANDLERS = MappingProxyType(
             ("agent.set", set_agent),
             ("agent.list", list_agents),
             ("agent.revoke", revoke_agent),
+            ("integration.list", list_integrations),
+            ("integration.feishu.configure", configure_feishu),
+            ("integration.feishu.auth_url", create_feishu_auth_url),
+            ("integration.feishu.sync", sync_feishu_rpc),
+            ("integration.feishu.unbind", unbind_feishu),
             ("auth.status", auth_status),
             ("sync.bootstrap", bootstrap_snapshot),
             ("pairing.create", create_pairing),
@@ -227,6 +246,12 @@ async def dispatch_write(ctx, req: RawRpcRequest) -> dict:
             await store_idempotency(tx, call, request_id, entry)
     if call is not None and call.method == "token.revoke":
         await ctx.hub.kick_token(response["data"]["token_id"])
+    if call is not None and call.method in ("event.set", "event.delete"):
+        ev_id = response["data"].get("event_id")
+        if ev_id:
+            await mirror_event_to_feishu(
+                ctx, ev_id, deleted=call.method == "event.delete"
+            )
     return response
 
 

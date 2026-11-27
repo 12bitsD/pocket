@@ -12,3 +12,5 @@ class Settings:
     scheduler_interval: float = 1.0
     cors_origins: tuple[str, ...] = ("*",)
     releases_dir: str = ""
+    feishu_app_id: str = ""
+    feishu_app_secret: str = ""

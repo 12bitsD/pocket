@@ -20,7 +20,7 @@ def resolvedKeystoreFile = envKeystorePath
 def resolvedStorePassword = System.getenv('POCKET_KEYSTORE_PASSWORD') ?: 'pocketrelease'
 def resolvedKeyAlias = System.getenv('POCKET_KEY_ALIAS') ?: 'pocket-calendar'
 def resolvedKeyPassword = System.getenv('POCKET_KEY_PASSWORD') ?: resolvedStorePassword
-def resolvedVersionName = (project.findProperty('pocketVersionName') ?: '0.2.2').toString()
+def resolvedVersionName = (project.findProperty('pocketVersionName') ?: '0.2.3').toString()
 def explicitCode = project.findProperty('pocketVersionCode')?.toString()?.toInteger()
 def resolvedVersionCode = explicitCode ?: computeSemverCode(resolvedVersionName)
 
@@ -110,6 +110,7 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.core:core-ktx:$androidxCoreVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     implementation project(':capacitor-android')
     implementation project(':capacitor-cordova-android-plugins')
     testImplementation "junit:junit:$junitVersion"

@@ -1,12 +1,19 @@
 package com.pocket.calendar
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.result.ActivityResult
 import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.google.zxing.integration.android.IntentIntegrator
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import java.util.concurrent.Executors
 import org.json.JSONObject
 
@@ -166,6 +173,62 @@ class PocketAlarmPlugin : Plugin() {
         } catch (err: Exception) {
             call.reject("Failed to trigger test alarm", err)
         }
+    }
+
+    @PluginMethod
+    fun scanPairingQr(call: PluginCall) {
+        val host = activity
+        if (host == null) {
+            call.reject("Activity unavailable for QR scan")
+            return
+        }
+        val opts = ScanOptions().apply {
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            setPrompt("对准 Pocket Cloud 配对二维码")
+            setBeepEnabled(false)
+            setOrientationLocked(true)
+        }
+        val intent = ScanContract().createIntent(host, opts)
+        startActivityForResult(call, intent, "onQrScanResult")
+    }
+
+    @ActivityCallback
+    private fun onQrScanResult(call: PluginCall?, result: ActivityResult) {
+        if (call == null) {
+            return
+        }
+        val parsed = IntentIntegrator.parseActivityResult(
+            result.resultCode,
+            result.data
+        )
+        val raw = parsed?.contents?.trim().orEmpty()
+        call.resolve(
+            JSObject().apply {
+                put("raw", raw)
+                put("cancelled", raw.isEmpty())
+            }
+        )
+    }
+
+    @PluginMethod
+    fun consumePendingPairUri(call: PluginCall) {
+        val host = activity as? MainActivity
+        val uri = host?.consumePendingPairUri() ?: ""
+        call.resolve(JSObject().apply { put("uri", uri) })
+    }
+
+    @PluginMethod
+    fun openExternalUrl(call: PluginCall) {
+        val url = call.getString("url")?.trim().orEmpty()
+        if (url.isEmpty()) {
+            call.reject("Missing external URL")
+            return
+        }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        call.resolve(JSObject().apply { put("opened", true) })
     }
 
     private fun buildSyncResultJson(

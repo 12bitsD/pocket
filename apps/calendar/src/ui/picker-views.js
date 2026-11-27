@@ -44,6 +44,9 @@ export function buildTimeFieldHtml(spec) {
   const aria = escapeHtml(spec.ariaLabel || '选择时间');
   const dis = spec.disabled ? 'disabled' : '';
   const extraCls = spec.compact ? 'compact' : 'large';
+  const slotHtml = spec.externalSlot
+    ? ''
+    : `<div class="picker-slot" data-picker-slot="${id}" hidden></div>`;
   return `<div class="picker-anchor" data-picker-wrap="${id}">
     <input type="hidden" id="${id}" name="${name}" value="${val}">
     <button class="picker-trigger time-trigger ${extraCls}" type="button" ${dis}
@@ -51,7 +54,7 @@ export function buildTimeFieldHtml(spec) {
       data-picker-open="time" data-picker-target="${id}">
       <span data-picker-label="${id}">${val}</span>
     </button>
-    <div class="picker-slot" data-picker-slot="${id}" hidden></div>
+    ${slotHtml}
   </div>`;
 }
 

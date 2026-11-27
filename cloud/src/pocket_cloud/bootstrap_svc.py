@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from .agents import list_agents
 from .calendar_svc import list_events
+from .feishu_sync import list_integrations
 from .todo_svc import list_todos
 from .tokens import list_tokens
 
@@ -46,9 +47,13 @@ async def bootstrap_snapshot(ctx, conn, identity, params: dict) -> dict:
         todos = (await list_todos(ctx, conn, identity, params))["todos"]
     agents = []
     tokens = []
+    integrations = []
     if "*" in identity.scopes:
         agents = (await list_agents(ctx, conn, identity, params))["agents"]
         tokens = (await list_tokens(ctx, conn, identity, params))["tokens"]
+        integrations = (await list_integrations(ctx, conn, identity, params))[
+            "integrations"
+        ]
     return dict(
         identity=dict(
             kind=identity.kind,
@@ -60,4 +65,5 @@ async def bootstrap_snapshot(ctx, conn, identity, params: dict) -> dict:
         todos=todos,
         agents=agents,
         tokens=tokens,
+        integrations=integrations,
     )

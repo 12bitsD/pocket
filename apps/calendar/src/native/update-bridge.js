@@ -23,7 +23,7 @@ export function buildAppUpdateRowHtml(state) {
   if (!state.isNativeAndroid) {
     return '';
   }
-  const cur = escapeHtml(state.installedApp?.versionName || '0.2.2');
+  const cur = escapeHtml(state.installedApp?.versionName || '0.2.3');
   const upd = state.appUpdate;
   const sub = upd
     ? `有新版 v${escapeHtml(upd.version_name)}`

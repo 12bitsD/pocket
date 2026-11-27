@@ -14,6 +14,7 @@ from .deliveries import (
     issue_callback_credentials,
 )
 from .errors import RpcError
+from .feishu_sync import sync_due_external_calendars
 from .todo_cron import compute_next_fire_at, window_from_row
 from .todo_svc import bump_todo_sync, sync_todo_snapshot
 from .todo_trigger import trigger_todo
@@ -248,6 +249,7 @@ async def dispatch_due_deliveries(ctx) -> list[dict]:
 async def run_scheduler_tick(ctx) -> None:
     await expand_due_todos(ctx)
     await dispatch_due_deliveries(ctx)
+    await sync_due_external_calendars(ctx)
 
 
 async def wait_or_stop(stop_event: asyncio.Event, delay: float) -> None:

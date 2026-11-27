@@ -69,7 +69,8 @@ async function tryBootstrapSnapshot(ctx, range, callOpts) {
       masterEvents: extractMasterEvents(boot.events),
       todos: boot.todos,
       agents: boot.agents || [],
-      tokens: boot.tokens || []
+      tokens: boot.tokens || [],
+      integrations: boot.integrations || []
     }
   };
 }

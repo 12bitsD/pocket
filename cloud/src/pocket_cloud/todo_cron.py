@@ -53,6 +53,7 @@ class TodoSpec:
     alarm_status: str
     next_fire_at: datetime | None
     ttl_seconds: int
+    tags: tuple[str, ...] = ()
 
 
 def is_agent_assignee(assignee: str) -> bool:
@@ -196,6 +197,29 @@ def parse_todo_flags(params: dict, existing: dict | None) -> TodoFlags:
     )
 
 
+def clean_single_tag(item) -> str:
+    if not isinstance(item, str):
+        raise RpcError(422, "INVALID_TAGS", "each tag must be text")
+    return item.strip().lstrip("#")[:24]
+
+
+def parse_todo_tags(params: dict, existing: dict | None) -> tuple[str, ...]:
+    if "tags" not in params:
+        prev = existing.get("tags") if existing is not None else None
+        return tuple(prev or ())
+    raw = params.get("tags")
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        raise RpcError(422, "INVALID_TAGS", "tags must be a list of strings")
+    cleaned = []
+    for item in raw:
+        val = clean_single_tag(item)
+        if val and val not in cleaned:
+            cleaned.append(val)
+    return tuple(cleaned[:8])
+
+
 def build_todo_spec(
     identity, params: dict, existing: dict | None, now: datetime
 ) -> TodoSpec:
@@ -229,4 +253,5 @@ def build_todo_spec(
         alarm_status=runtime.alarm_status,
         next_fire_at=runtime.next_fire_at,
         ttl_seconds=ttl_seconds,
+        tags=parse_todo_tags(params, existing),
     )

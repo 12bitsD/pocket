@@ -13,6 +13,12 @@ import {
   todoScheduleUiValue
 } from '../domain/todo-model.js';
 import { buildDateFieldHtml, buildTimeFieldHtml } from './pickers.js';
+import {
+  buildFeishuDialogHtml,
+  buildTodoTagPickerHtml
+} from './settings-sections.js';
+
+export { buildFeishuDialogHtml };
 
 const REMINDER_ITEMS = Object.freeze([
   Object.freeze(['none', '不提醒']),
@@ -62,11 +68,11 @@ function buildEventDateAndTimeFields(vals, todayIso) {
   });
   const startField = buildTimeFieldHtml({
     id: 'ev-start', name: 'start', value: vals.start,
-    ariaLabel: '开始时间', compact: true
+    ariaLabel: '开始时间', compact: true, externalSlot: true
   });
   const endField = buildTimeFieldHtml({
     id: 'ev-end', name: 'end', value: vals.end,
-    ariaLabel: '结束时间', compact: true
+    ariaLabel: '结束时间', compact: true, externalSlot: true
   });
   const dur = toMinutes(vals.end) - toMinutes(vals.start);
   const dayBtns = [['0', '今天'], ['1', '明天'], ['2', '后天']].map(([o, l]) => {
@@ -94,6 +100,8 @@ function buildEventDateAndTimeFields(vals, todayIso) {
       <div class="time-range-row">
         ${startField}<span class="range-sep">→</span>${endField}
       </div>
+      <div class="picker-slot" data-picker-slot="ev-start" hidden></div>
+      <div class="picker-slot" data-picker-slot="ev-end" hidden></div>
     </div>`;
 }
 
@@ -247,6 +255,7 @@ export function buildTodoDialogHtml(state, editId) {
     </div>
     <fieldset><legend>方式</legend>
       <div class="chip-strip choice-strip">${targetHtml}</div></fieldset>
+    ${buildTodoTagPickerHtml(state, spec.existing?.tags, spec.disAttr)}
     ${buildTodoTimingFields(spec, schedHtml)}
     <div class="field" data-todo-lock>
       <label class="lock-toggle-row">

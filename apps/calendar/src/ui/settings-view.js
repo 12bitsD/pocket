@@ -1,6 +1,11 @@
 import { describeConnection } from '../domain/calendar-model.js';
 import { escapeHtml } from '../domain/date-time.js';
 import { buildAppUpdateRowHtml } from '../native/update-bridge.js';
+import {
+  buildExternalCalendarsFoldHtml,
+  buildPairBoxHtml,
+  buildTokensFoldHtml
+} from './settings-sections.js';
 
 const PERMISSION_ITEMS = Object.freeze([
   Object.freeze(['exactAlarm', '精确闹钟权限', 'SCHEDULE_EXACT_ALARM']),
@@ -15,30 +20,15 @@ const PERMISSION_ITEMS = Object.freeze([
 
 function buildConnectionBadge(state) {
   const conn = describeConnection(state);
-  return `<span class="receipt-code">` +
+  return `<span class="fold-badge">` +
     `<i class="dot ${conn.dotClass}" aria-hidden="true"></i>` +
     `${escapeHtml(conn.label)}</span>`;
-}
-
-function buildPairBoxHtml(activePairing) {
-  if (!activePairing) {
-    return '';
-  }
-  const code = escapeHtml(activePairing.code);
-  return `<div class="pair-box">
-      <span class="pair-code">${code}</span>
-      <div class="inline-actions">
-        <span class="jc-spec">5m 内有效 · 手机输入绑定</span>
-        <button class="cmd-quiet outlined mini" type="button"
-          data-copy-token="${code}">复制配对码</button>
-      </div>
-    </div>`;
 }
 
 function buildConnectedCloudBody(state, canAdmin) {
   const pairBtn = canAdmin
     ? '<button class="cmd-quiet outlined" type="button" data-create-pair>' +
-      '生成 6 位配对码</button>'
+      '生成配对二维码</button>'
     : '';
   const qLen = (state.offlineQueue?.mutations?.length || 0) +
     (state.offlineQueue?.receipts?.length || 0);
@@ -48,7 +38,7 @@ function buildConnectedCloudBody(state, canAdmin) {
   const label = state.identity?.label || 'Pocket Session';
   const src = state.identity?.source || 'web';
   const seq = escapeHtml(state.lastSeq);
-  return `<div class="stack-sm">
+  return `<div class="stack-sm fold-body">
     <div class="jc-spec">
       ${escapeHtml(state.baseUrl)} · ${escapeHtml(label)} (${escapeHtml(src)})
       · seq #${seq}
@@ -118,7 +108,16 @@ function buildDisconnectedCloudBody(state, authTab) {
   const formHtml = isClaim
     ? buildClaimFormHtml(urlVal)
     : buildLoginFormHtml(urlVal);
-  return `<div class="stack-sm">
+  const scanBtn = state.isNativeAndroid
+    ? '<button class="btn-block primary" type="button" data-scan-pair-qr>' +
+      '扫码一键连接 Pocket Cloud</button>'
+    : '<form class="secret-row" id="pair-uri-form">' +
+      '<input name="pairUri" placeholder="粘贴 pocket://pair?... 配对链接" ' +
+      'autocapitalize="off" spellcheck="false" required>' +
+      '<button class="cmd-quiet outlined mini" type="submit">直连</button>' +
+      '</form>';
+  return `<div class="stack-sm fold-body">
+    ${scanBtn}
     <div class="seg-bar">
       <button type="button" data-auth-tab="login"
         aria-pressed="${!isClaim}">密钥登录</button>
@@ -129,41 +128,55 @@ function buildDisconnectedCloudBody(state, authTab) {
   </div>`;
 }
 
-function buildPermissionsCardHtml(perms) {
+function buildPermissionRowHtml(perms, item) {
+  const [key, label, code] = item;
+  const ready = Boolean(perms[key]);
+  const btnText = ready ? '已就绪' : '去开启';
+  const aria = escapeHtml(`${btnText}：${label} (${code})`);
+  return `<div class="row compact">
+    <span>
+      <span class="row-title">${label}</span>
+      <span class="row-meta">${code}</span>
+    </span>
+    <div class="inline-actions">
+      <span class="receipt-code">` +
+        `<i class="dot ${ready ? 'ok' : 'mark'}" aria-hidden="true"></i>` +
+        `${ready ? 'READY' : 'REQUIRED'}</span>
+      <button class="cmd-quiet outlined mini" type="button"
+        aria-label="${aria}" data-perm-jump="${key}">${btnText}</button>
+    </div>
+  </div>`;
+}
+
+function buildPermissionsCardHtml(perms, openFolds) {
   if (!perms) {
     return '';
   }
-  const rowsHtml = PERMISSION_ITEMS.map(([key, label, code]) => {
-    const ready = Boolean(perms[key]);
-    const dotCls = ready ? 'ok' : 'mark';
-    const stamp = ready ? 'READY' : 'REQUIRED';
-    const btnText = ready ? '已就绪' : '去开启';
-    const aria = escapeHtml(`${btnText}：${label} (${code})`);
-    return `<div class="row compact">
-      <span>
-        <span class="row-title">${label}</span>
-        <span class="row-meta">${code}</span>
-      </span>
-      <div class="inline-actions">
-        <span class="receipt-code">` +
-          `<i class="dot ${dotCls}" aria-hidden="true"></i>${stamp}</span>
-        <button class="cmd-quiet outlined mini" type="button"
-          aria-label="${aria}" data-perm-jump="${key}">${btnText}</button>
-      </div>
-    </div>`;
-  }).join('');
-  return `<div class="col-head">
+  const readyCount = PERMISSION_ITEMS.filter(([k]) => Boolean(perms[k])).length;
+  const allReady = readyCount === PERMISSION_ITEMS.length;
+  const badgeText = allReady ? '全部就绪' : `${readyCount}/4 就绪`;
+  const rowsHtml = PERMISSION_ITEMS
+    .map((item) => buildPermissionRowHtml(perms, item))
+    .join('');
+  const openAttr = openFolds?.has('perms') ? 'open' : '';
+  return `<details class="fold" data-fold-id="perms" ${openAttr}>
+    <summary>
       <span>DEVICE ALARM PERMISSIONS (4)</span>
+      <span class="fold-badge">` +
+        `<i class="dot ${allReady ? 'ok' : 'mark'}"></i>${badgeText}</span>
+    </summary>
+    <div class="stack-sm fold-body">
       <div class="inline-actions">
         <button class="cmd-quiet outlined mini" type="button"
           data-perm-test-ring>测试响铃</button>
         <button class="cmd-quiet outlined mini" type="button"
           aria-label="重新自检设备响铃权限" data-perm-refresh>自检</button>
       </div>
+      <div class="rows" role="group" aria-label="设备闹钟权限自检">
+        ${rowsHtml}
+      </div>
     </div>
-    <div class="rows" role="group" aria-label="设备闹钟权限自检">
-      ${rowsHtml}
-    </div>`;
+  </details>`;
 }
 
 function buildMintedTokenBanner(state) {
@@ -220,88 +233,65 @@ function buildAgentCardHtml(ag, canAdmin) {
   </article>`;
 }
 
-function buildTokensFoldHtml(state, canAdmin) {
-  if (!canAdmin) {
-    return '';
-  }
-  const activeTokens = state.tokens.filter((tok) => !tok.revoked_at);
-  const rows = activeTokens.map((tok) => {
-    const scopes = escapeHtml((tok.scopes || []).join(', '));
-    const kind = escapeHtml(tok.kind);
-    const id = escapeHtml(tok.token_id);
-    const revokeBtn = tok.kind !== 'bootstrap'
-      ? `<button class="cmd-quiet outlined mini" type="button" ` +
-        `data-revoke-token="${id}">吊销</button>`
-      : '<code>MASTER</code>';
-    return `<div class="row compact">
-      <span>
-        <span class="row-title">
-          ${escapeHtml(tok.label)}
-          <span class="mark-tag neutral">${kind}</span>
-        </span>
-        <span class="row-meta">${scopes}</span>
-      </span>
-      ${revokeBtn}
-    </div>`;
-  }).join('');
-  return `<details class="fold">
-    <summary>TOKENS &amp; DEVICES (${activeTokens.length})</summary>
-    <div class="stack-sm" style="margin-top:8px">
-      <div class="inline-actions">
-        <button class="cmd-quiet outlined mini" type="button"
-          data-mint-web-token>+ 签发 Web 令牌</button>
-      </div>
-      <div class="rows">${rows}</div>
+function buildThemeRowHtml(theme) {
+  const isDark = theme === 'black';
+  return `<div class="row compact">
+    <span class="row-title">纸面主题</span>
+    <div class="seg-bar compact-seg">
+      <button type="button" data-set-theme="white"
+        aria-pressed="${!isDark}">暖白纸</button>
+      <button type="button" data-set-theme="black"
+        aria-pressed="${isDark}">夜间炭纸</button>
     </div>
-  </details>`;
+  </div>`;
+}
+
+function buildAgentsSectionHtml(state, canAdmin) {
+  if (state.agentGrants.length === 0) {
+    return '<div class="empty">尚未绑定外部 Agent<br>' +
+      '<button class="cmd-quiet outlined" type="button" data-open-agent>' +
+      '+ 绑定首个 Agent</button></div>';
+  }
+  const cards = state.agentGrants
+    .map((ag) => buildAgentCardHtml(ag, canAdmin))
+    .join('');
+  return `<div class="jobs">${cards}</div>`;
 }
 
 export function renderSettingsView(state, uiPrefs) {
-  const defaultTab = state.isNativeAndroid ? 'claim' : 'login';
-  const authTab = uiPrefs?.authTab || defaultTab;
+  const authTab = uiPrefs?.authTab ||
+    (state.isNativeAndroid ? 'claim' : 'login');
+  const openFolds = uiPrefs?.openFolds || null;
   const connected = state.mode === 'cloud' &&
     state.connectionStatus !== 'revoked';
   const canAdmin = Boolean(state.canAdmin);
   const heroBody = connected
     ? buildConnectedCloudBody(state, canAdmin)
     : buildDisconnectedCloudBody(state, authTab);
-  const agentsHtml = state.agentGrants
-    .map((ag) => buildAgentCardHtml(ag, canAdmin))
-    .join('');
-  const emptyAgents = '<div class="empty">尚未绑定外部 Agent<br>' +
-    '<button class="cmd-quiet outlined" type="button" data-open-agent>' +
-    '+ 绑定首个 Agent</button></div>';
-  const agentsSection = state.agentGrants.length > 0
-    ? `<div class="jobs">${agentsHtml}</div>`
-    : emptyAgents;
-  const isDark = state.theme === 'black';
-  const themeRow = `<div class="row compact">
-      <span class="row-title">纸面主题</span>
-      <div class="seg-bar compact-seg">
-        <button type="button" data-set-theme="white"
-          aria-pressed="${!isDark}">暖白纸</button>
-        <button type="button" data-set-theme="black"
-          aria-pressed="${isDark}">夜间炭纸</button>
-      </div>
-    </div>`;
+  const cloudOpen = openFolds?.has('cloud') ? 'open' : '';
   return `<div class="foreground-stack">
     <article class="hero">
-      <div class="hero-top">
-        <span class="t-minus">POCKET CLOUD LINK</span>
-        ${buildConnectionBadge(state)}
-      </div>
-      ${heroBody}
+      <details class="fold hero-fold" data-fold-id="cloud" ${cloudOpen}>
+        <summary>
+          <span class="t-minus">POCKET CLOUD LINK</span>
+          ${buildConnectionBadge(state)}
+        </summary>
+        ${heroBody}
+      </details>
     </article>
-    ${buildPermissionsCardHtml(state.nativePermissions)}
+    ${buildPermissionsCardHtml(state.nativePermissions, openFolds)}
+    ${buildExternalCalendarsFoldHtml(state, openFolds)}
     ${buildMintedTokenBanner(state)}
-    <div class="rows">${themeRow}${buildAppUpdateRowHtml(state)}</div>
+    <div class="rows">
+      ${buildThemeRowHtml(state.theme)}${buildAppUpdateRowHtml(state)}
+    </div>
     <div class="col-head">
       <span>BOUND AGENTS (${state.agentGrants.length})</span>
       <button class="cmd-quiet outlined mini" type="button"
         data-open-agent>+ 绑定 Agent</button>
     </div>
-    ${agentsSection}
-    ${buildTokensFoldHtml(state, state.mode === 'cloud' && canAdmin)}
+    ${buildAgentsSectionHtml(state, canAdmin)}
+    ${buildTokensFoldHtml(state, state.mode === 'cloud' && canAdmin, openFolds)}
     <p class="man-line kbd-hint">
       快捷键：[d] 今日 · [m] 月历 · [t] Todo · [c] 配置 · [n] 新建 · [b] 纸色
     </p>

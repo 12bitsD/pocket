@@ -29,6 +29,15 @@ import {
   stripSensitiveUrlParams
 } from './cloud-session.js';
 import {
+  claimPairUriAction,
+  configureFeishuAction,
+  refreshIntegrationsAction,
+  scanAndClaimPairingAction,
+  startFeishuOAuthAction,
+  syncFeishuNowAction,
+  unbindFeishuAction
+} from './integration-actions.js';
+import {
   dispatchOrQueueAlarmReceipt,
   reapplyOfflineOverlay
 } from './offline-flush.js';
@@ -145,7 +154,14 @@ const BOUND_ACTIONS = Object.freeze({
   createScopedToken: createTokenAction,
   revokeToken: revokeTokenByIdAction,
   sendAlarmReceipt: dispatchOrQueueAlarmReceipt,
-  refreshAdminSnapshot: refreshAdminLists
+  refreshAdminSnapshot: refreshAdminLists,
+  scanAndClaimPairing: scanAndClaimPairingAction,
+  claimPairUri: claimPairUriAction,
+  refreshIntegrations: refreshIntegrationsAction,
+  configureFeishu: configureFeishuAction,
+  startFeishuOAuth: startFeishuOAuthAction,
+  syncFeishuNow: syncFeishuNowAction,
+  unbindFeishu: unbindFeishuAction
 });
 
 function bindActions(ctx) {

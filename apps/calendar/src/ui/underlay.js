@@ -57,9 +57,12 @@ export function buildTtyBarHtml(state) {
   const meta = PAGE_META[state.page] || PAGE_META.agenda;
   const slug = meta[1].slice(1);
   const pathHtml = `<b>$</b>pocket/${escapeHtml(slug)}`;
-  const conn = describeConnection(state);
   const qLen = (state.offlineQueue?.mutations?.length || 0) +
     (state.offlineQueue?.receipts?.length || 0);
+  if (state.mode !== 'cloud' && qLen === 0) {
+    return { pathHtml, statHtml: '' };
+  }
+  const conn = describeConnection(state);
   const qTag = qLen > 0 ? ` · queue ${qLen}` : '';
   const statText = `${escapeHtml(conn.label)}${qTag}`;
   return {

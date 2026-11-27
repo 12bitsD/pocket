@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 import httpx
 
 from .app_releases import (
@@ -22,6 +22,7 @@ from .context import AppContext
 from .db import open_pool, run_migrations
 from .deliveries import record_delivery_result
 from .errors import RpcError
+from .feishu_sync import complete_feishu_callback
 from .rpc import dispatch
 from .scheduler import scheduler_loop
 from .sync_ws import handle_sync_ws
@@ -104,6 +105,31 @@ def register_app_release_routes(app: FastAPI) -> None:
         return dict(data=meta)
 
 
+def register_feishu_routes(app: FastAPI) -> None:
+    @app.get("/v1/integrations/feishu/callback")
+    async def feishu_callback(code: str = "", state: str = ""):
+        style = (
+            "font-family:sans-serif;padding:32px;"
+            "background:#f6f2e9;color:#1a1917"
+        )
+        if not code or not state:
+            return HTMLResponse(
+                f"<!doctype html><meta charset=utf-8><body style='{style}'>"
+                "<h2>飞书授权参数不完整</h2></body>",
+                status_code=400,
+            )
+        stats = await complete_feishu_callback(app.state.ctx, code, state)
+        msg = (
+            f"导入 {stats['imported']} · 更新 {stats['updated']} "
+            f"· 删除 {stats['deleted']}"
+        )
+        return HTMLResponse(
+            f"<!doctype html><meta charset=utf-8><body style='{style}'>"
+            f"<h2>已绑定飞书日历</h2><p>{msg}</p>"
+            "<p>现在可以切回 Pocket Calendar。</p></body>"
+        )
+
+
 def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="Pocket Cloud", lifespan=build_lifespan(settings))
     app.state.settings = settings
@@ -126,6 +152,7 @@ def create_app(settings: Settings) -> FastAPI:
         return dict(status="ok")
 
     register_app_release_routes(app)
+    register_feishu_routes(app)
 
     @app.post("/v1/rpc/{method}")
     async def rpc(method: str, request: Request):

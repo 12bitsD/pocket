@@ -231,6 +231,8 @@ def load_config(env):
             public_url=env.get("POCKET_PUBLIC_URL", "http://127.0.0.1:8787"),
             allow_http_loopback=env.get("POCKET_ALLOW_HTTP_LOOPBACK") == "true",
             releases_dir=env.get("POCKET_RELEASES_DIR", "").strip(),
+            feishu_app_id=env.get("POCKET_FEISHU_APP_ID", "").strip(),
+            feishu_app_secret=env.get("POCKET_FEISHU_APP_SECRET", "").strip(),
         )
     except KeyError as error:
         raise CliError(

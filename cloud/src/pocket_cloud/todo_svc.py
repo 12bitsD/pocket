@@ -29,7 +29,7 @@ TODO_FIELD_NAMES = (
     "todo_id", "text", "assignee", "schedule_kind", "time_hhmm",
     "once_date", "weekly_dow", "timezone", "done", "enabled",
     "locked", "skip_next", "alarm_status", "next_fire_at",
-    "ttl_seconds", "revision", "updated_at",
+    "ttl_seconds", "tags", "revision", "updated_at",
 )
 TODO_COLUMNS = ", ".join(TODO_FIELD_NAMES)
 TODO_QUALIFIED = ", ".join("t." + col for col in TODO_FIELD_NAMES)
@@ -72,12 +72,13 @@ def serialize_todo(row) -> dict:
         alarm_status=row[12],
         next_fire_at=row[13].isoformat() if row[13] else None,
         ttl_seconds=row[14],
-        revision=row[15],
-        updated_at=row[16].isoformat(),
-        last_delivery_id=row[17],
-        last_delivery_status=row[18],
-        result_summary=row[19],
-        completed_at=row[20].isoformat() if row[20] else None,
+        tags=list(row[15] or ()),
+        revision=row[16],
+        updated_at=row[17].isoformat(),
+        last_delivery_id=row[18],
+        last_delivery_status=row[19],
+        result_summary=row[20],
+        completed_at=row[21].isoformat() if row[21] else None,
     )
 
 
@@ -176,7 +177,7 @@ async def write_todo_row(conn, entry: TodoWriteEntry) -> dict:
         win.weekly_dow if win else None,
         spec.timezone_name, spec.done, spec.enabled, spec.locked,
         spec.skip_next, spec.alarm_status, spec.next_fire_at,
-        spec.ttl_seconds, entry.revision, entry.updated_at,
+        spec.ttl_seconds, list(spec.tags), entry.revision, entry.updated_at,
     )
     sql = (
         "INSERT INTO todos ("

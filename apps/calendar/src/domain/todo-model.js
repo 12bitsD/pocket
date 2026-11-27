@@ -5,6 +5,40 @@ export const TODO_SCHEDULES = Object.freeze([
   '今天', '明天', '指定日期', '每天', '工作日', '每周'
 ]);
 
+export const TODO_PRESET_TAGS = Object.freeze([
+  '工作', '个人', '项目', '生活'
+]);
+
+const INLINE_TAG_RE = /(?:^|\s)#([^\s#,，、;；]{1,24})/g;
+
+export function normalizeTodoTags(raw) {
+  const list = Array.isArray(raw)
+    ? raw
+    : String(raw || '').split(/[\s,，、;；]+/);
+  const out = [];
+  for (const item of list) {
+    const clean = String(item || '').trim().replace(/^#+/, '').slice(0, 24);
+    if (clean && !out.includes(clean)) {
+      out.push(clean);
+    }
+    if (out.length >= 8) {
+      break;
+    }
+  }
+  return out;
+}
+
+export function parseInlineTags(rawText) {
+  const matches = [];
+  const text = String(rawText || '');
+  for (const m of text.matchAll(INLINE_TAG_RE)) {
+    if (m[1]) {
+      matches.push(m[1]);
+    }
+  }
+  return normalizeTodoTags(matches);
+}
+
 const RECURRING_KINDS = Object.freeze(['daily', 'weekdays', 'weekly']);
 
 const UI_TO_KIND = Object.freeze({
@@ -137,6 +171,7 @@ export function cleanInlineTokens(rawText, agentIds) {
     cleaned = cleaned.replace(makeHandlePattern(handle), ' ');
   }
   return cleaned
+    .replace(INLINE_TAG_RE, ' ')
     .replace(INLINE_SCHED_RE, ' ')
     .replace(INLINE_TIME_RE, '')
     .replace(/\s{2,}/g, ' ')
@@ -194,7 +229,10 @@ function resolveTodoMetadata(draft, existing, defaultTz) {
     enabled: draft.enabled ?? existing?.enabled ?? true,
     locked: draft.locked ?? existing?.locked ?? false,
     skip_next: draft.skip_next ?? existing?.skip_next ?? false,
-    ttl_seconds: draft.ttl_seconds ?? existing?.ttl_seconds ?? 900
+    ttl_seconds: draft.ttl_seconds ?? existing?.ttl_seconds ?? 900,
+    tags: draft.tags !== undefined
+      ? normalizeTodoTags(draft.tags)
+      : normalizeTodoTags(existing?.tags)
   };
 }
 

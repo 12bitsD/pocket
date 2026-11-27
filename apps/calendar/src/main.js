@@ -7,7 +7,6 @@ import '@fontsource/ibm-plex-sans/latin-500.css';
 import '@fontsource/ibm-plex-sans/latin-600.css';
 import '../../../packages/design-system/terminal.css';
 
-import { addDaysIso, pad2 } from './domain/date-time.js';
 import { createAppStore } from './state/app-store.js';
 import { parseUrlBootstrap } from './state/sync-reducer.js';
 import {
@@ -17,8 +16,14 @@ import {
 import {
   buildAgentDialogHtml,
   buildEventDialogHtml,
+  buildFeishuDialogHtml,
   buildTodoDialogHtml
 } from './ui/dialogs.js';
+import {
+  attachPairDeepLinkHandler,
+  buildInitialUiState,
+  handleFoldToggle
+} from './ui/extra-handlers.js';
 import {
   handleDialogClick,
   handleDialogSubmit,
@@ -56,7 +61,8 @@ const KEY_PAGE_MAP = Object.freeze({
 const DIALOG_FOCUS_SELECTOR = Object.freeze({
   event: '#ev-title',
   todo: '#td-text',
-  agent: '#ag-id'
+  agent: '#ag-id',
+  feishu: '#fsh-app-id'
 });
 
 function renderActivePageHtml(state, ui) {
@@ -64,7 +70,7 @@ function renderActivePageHtml(state, ui) {
     return renderMonthView(state);
   }
   if (state.page === 'todo') {
-    return renderTodoView(state, ui.composer);
+    return renderTodoView(state, ui.composer, ui.prefs);
   }
   if (state.page === 'settings') {
     return renderSettingsView(state, ui.prefs);
@@ -168,6 +174,7 @@ function openDialogWith(ui, kind, title, html) {
 const MODAL_SPECS = Object.freeze({
   todo: ['todo', '新建 Todo', '编辑 Todo 与唤醒对象', buildTodoDialogHtml],
   agent: ['agent', '绑定外部 Agent', '编辑外部 Agent', buildAgentDialogHtml],
+  feishu: ['feishu', '配置飞书日历', '配置飞书日历', buildFeishuDialogHtml],
   event: ['event', '新建日程', '编辑日程', buildEventDialogHtml]
 });
 
@@ -238,18 +245,6 @@ function bindGlobalShortcuts(ui) {
   });
 }
 
-function createInitialChromeCache() {
-  return {
-    path: '',
-    stat: '',
-    navPage: '',
-    uPage: '',
-    uDate: '',
-    uPool: null,
-    uTodos: null
-  };
-}
-
 function bindPaneAndFormEvents(ui) {
   const doc = ui.doc;
   const store = ui.store;
@@ -258,6 +253,7 @@ function bindPaneAndFormEvents(ui) {
   content.addEventListener('change', (ev) => handleComposerInput(ui, ev));
   content.addEventListener('submit', (ev) => handleContentSubmit(ui, ev));
   content.addEventListener('click', (ev) => handleContentClick(ui, ev));
+  content.addEventListener('toggle', (ev) => handleFoldToggle(ui, ev), true);
   const form = doc.querySelector('#active-form');
   const syncDom = (ev) => {
     syncEventEndOnStartEdit(form, ev);
@@ -279,40 +275,8 @@ function bindPaneAndFormEvents(ui) {
   });
 }
 
-function nextDefaultAlarmHhmm() {
-  const now = new Date();
-  const mins = now.getHours() * 60 + now.getMinutes();
-  const next = (Math.ceil((mins + 5) / 10) * 10) % 1440;
-  return `${pad2(Math.floor(next / 60))}:${pad2(next % 60)}`;
-}
-
 export function createCalendarApp(doc, store) {
-  const initState = store.getState();
-  const preferClaim = Boolean(initState.isNativeAndroid) ||
-    (initState.isLocalDevice && initState.mode === 'cloud');
-  const ui = {
-    doc,
-    store,
-    editingId: null,
-    toastTimer: null,
-    undoAction: null,
-    pendingAnim: '',
-    chromeCache: createInitialChromeCache(),
-    prefs: { authTab: preferClaim ? 'claim' : 'login' },
-    composer: {
-      target: '@me',
-      time: nextDefaultAlarmHhmm(),
-      schedule: '今天',
-      date: addDaysIso(initState.todayIso, 1),
-      weeklyDow: 5,
-      whenOpen: false,
-      text: ''
-    },
-    render: null,
-    openModal: null,
-    navigate: null,
-    destroy: null
-  };
+  const ui = buildInitialUiState(doc, store);
   ui.render = () => renderContentPane(ui, '');
   ui.openModal = (kind, id) => openModalByKind(ui, kind, id);
   ui.navigate = (page) => navigateToPage(ui, page);
@@ -320,6 +284,7 @@ export function createCalendarApp(doc, store) {
   bindTopChromeListeners(ui);
   bindPaneAndFormEvents(ui);
   bindGlobalShortcuts(ui);
+  attachPairDeepLinkHandler(ui);
   const detachMobile = attachMobileUx(ui, {
     onNavigate: (page) => navigateToPage(ui, page, { replaceHistory: true }),
     onMonthDelta: (delta) => stepMonthView(ui, delta)

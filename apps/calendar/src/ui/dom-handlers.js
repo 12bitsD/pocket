@@ -2,8 +2,10 @@ import { dateViewPatch } from '../domain/date-time.js';
 import {
   cleanInlineTokens,
   parseInlineSchedule,
+  parseInlineTags,
   parseInlineTokens
 } from '../domain/todo-model.js';
+import { handleExtraContentClick } from './extra-handlers.js';
 import {
   runSafely,
   showToast,
@@ -92,31 +94,36 @@ export function handleComposerInput(ui, event) {
   }
 }
 
+function submitQuickTodoForm(ui, trigger) {
+  const agentIds = ui.store.getState().agentGrants.map((a) => a.agent_id);
+  const text = cleanInlineTokens(ui.composer.text, agentIds) ||
+    ui.composer.text.trim();
+  if (!text) {
+    return;
+  }
+  const draft = {
+    text,
+    assignee: ui.composer.target,
+    schedule: ui.composer.schedule,
+    time_hhmm: ui.composer.time,
+    once_date: ui.composer.date,
+    weekly_dow: ui.composer.weeklyDow,
+    tags: parseInlineTags(ui.composer.text)
+  };
+  ui.composer.text = '';
+  ui.composer.whenOpen = false;
+  const msg = ui.composer.target === '@me'
+    ? `已设闹钟 · ${ui.composer.schedule} ${ui.composer.time}`
+    : '已保存 Todo';
+  runSafely(ui, ui.store.saveTodo(draft), msg, { trigger });
+}
+
 export function handleContentSubmit(ui, event) {
   const formEl = event.target;
   const trigger = formEl.querySelector?.('button[type="submit"]');
   if (formEl.id === 'quick-todo-form') {
     event.preventDefault();
-    const agentIds = ui.store.getState().agentGrants.map((a) => a.agent_id);
-    const text = cleanInlineTokens(ui.composer.text, agentIds) ||
-      ui.composer.text.trim();
-    if (!text) {
-      return;
-    }
-    const draft = {
-      text,
-      assignee: ui.composer.target,
-      schedule: ui.composer.schedule,
-      time_hhmm: ui.composer.time,
-      once_date: ui.composer.date,
-      weekly_dow: ui.composer.weeklyDow
-    };
-    ui.composer.text = '';
-    ui.composer.whenOpen = false;
-    const msg = ui.composer.target === '@me'
-      ? `已设闹钟 · ${ui.composer.schedule} ${ui.composer.time}`
-      : '已保存 Todo';
-    runSafely(ui, ui.store.saveTodo(draft), msg, { trigger });
+    submitQuickTodoForm(ui, trigger);
     return;
   }
   if (formEl.id === 'cloud-login-form') {
@@ -138,6 +145,13 @@ export function handleContentSubmit(ui, event) {
       name: fd.get('name')
     });
     runSafely(ui, call, '配对成功，本机设备密钥已激活', { trigger });
+    return;
+  }
+  if (formEl.id === 'pair-uri-form') {
+    event.preventDefault();
+    const fd = new FormData(formEl);
+    const call = ui.store.claimPairUri(fd.get('pairUri'), 'Web Client');
+    runSafely(ui, call, '配对成功，已连接 Pocket Cloud', { trigger });
   }
 }
 
@@ -312,7 +326,7 @@ export function handleContentClick(ui, event) {
       syncComposerWhenSummaryText(content, ui.composer);
     }
   });
-  if (picked) {
+  if (picked || handleExtraContentClick(ui, event)) {
     return;
   }
   for (const [selector, handler] of CLICK_HANDLERS) {

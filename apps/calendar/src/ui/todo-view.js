@@ -7,6 +7,7 @@ import {
   isRecurringTodo,
   isTodoActive,
   isTodoRetreated,
+  normalizeTodoTags,
   summarizeTodos
 } from '../domain/todo-model.js';
 import { buildAppUpdateBannerHtml } from '../native/update-bridge.js';
@@ -87,7 +88,7 @@ function buildComposerHtml(state, composer) {
   return `<form class="composer-card" id="quick-todo-form">
     <div class="composer-top">
       <input class="composer-input" id="quick-todo-input" enterkeyhint="done"
-        placeholder="写待办，或输入 @me 07:30…"
+        placeholder="写待办，支持 @me 07:30 或 #工作…"
         value="${escapeHtml(composer.text)}" autocomplete="off" required>
       <button class="cmd-primary" type="submit">添加</button>
     </div>
@@ -174,6 +175,9 @@ function buildTodoRowHtml(item, state) {
   const lockTag = item.locked
     ? '<span class="mark-tag lock">LOCKED · 本机锁</span>'
     : '';
+  const tagChips = normalizeTodoTags(item.tags).map(
+    (t) => `<span class="todo-tag-pill">#${escapeHtml(t)}</span>`
+  ).join('');
   const receiptHtml = item.result_summary
     ? `<div class="todo-receipt">↳ ${escapeHtml(item.result_summary)}</div>`
     : '';
@@ -188,7 +192,7 @@ function buildTodoRowHtml(item, state) {
         </div>
         <div class="todo-meta-row">
           <span class="todo-sub">${dotHtml}${escapeHtml(cleanSub)}</span>
-          ${lockTag}
+          ${tagChips}${lockTag}
         </div>
         ${receiptHtml}
       </button>
@@ -197,24 +201,105 @@ function buildTodoRowHtml(item, state) {
   </article>`;
 }
 
-function buildGroupedTodoRows(todos, state) {
-  const active = todos.filter((item) => isTodoActive(item));
-  const retreated = todos.filter((item) => !isTodoActive(item));
-  const actHtml = active.map((item) => buildTodoRowHtml(item, state)).join('');
-  if (retreated.length === 0) {
-    return `<div class="rows">${actHtml}</div>`;
+function buildTagFilterBarHtml(todos, activeFilter) {
+  const counts = new Map();
+  for (const item of todos) {
+    for (const tag of normalizeTodoTags(item.tags)) {
+      counts.set(tag, (counts.get(tag) || 0) + 1);
+    }
   }
-  const retHtml = retreated
-    .map((item) => buildTodoRowHtml(item, state))
-    .join('');
-  const divLabel = `已完成或暂停 (${retreated.length})`;
-  const divider = active.length > 0
-    ? `<div class="sub-divider">${divLabel}</div>`
-    : '';
-  return `<div class="rows">${actHtml}${divider}${retHtml}</div>`;
+  if (counts.size === 0) {
+    return '';
+  }
+  const pills = [
+    `<button class="route-pill" type="button" data-filter-tag="" ` +
+      `aria-pressed="${!activeFilter}">全部 ${todos.length}</button>`
+  ];
+  for (const [tag, cnt] of counts.entries()) {
+    const safe = escapeHtml(tag);
+    pills.push(
+      `<button class="route-pill" type="button" data-filter-tag="${safe}" ` +
+        `aria-pressed="${activeFilter === tag}">#${safe} ${cnt}</button>`
+    );
+  }
+  return `<div class="chip-strip tag-filter-bar">${pills.join('')}</div>`;
 }
 
-export function renderTodoView(state, composerState) {
+function buildFoldDeck(spec) {
+  const fid = escapeHtml(spec.id);
+  const title = escapeHtml(spec.title);
+  return `<details class="fold todo-group" data-fold-id="${fid}" ` +
+    `${spec.open ? 'open' : ''}>
+    <summary><span>${title}</span>` +
+    `<span class="fold-badge">${spec.count}</span></summary>
+    <div class="rows fold-body">${spec.rowsHtml}</div>
+  </details>`;
+}
+
+function groupActiveTodosByPrimaryTag(active) {
+  const byTag = new Map();
+  for (const item of active) {
+    const key = normalizeTodoTags(item.tags)[0] || '';
+    if (!byTag.has(key)) {
+      byTag.set(key, []);
+    }
+    byTag.get(key).push(item);
+  }
+  return byTag;
+}
+
+function buildActiveTodoDecks(active, state, activeFilter, closedFolds) {
+  const byTag = groupActiveTodosByPrimaryTag(active);
+  const hasTagged = [...byTag.keys()].some(Boolean);
+  if (activeFilter || !hasTagged) {
+    const fid = activeFilter ? `todo-tag-${activeFilter}` : 'todo-active';
+    return buildFoldDeck({
+      id: fid,
+      title: activeFilter ? `#${activeFilter}` : '进行中',
+      count: active.length,
+      rowsHtml: active.map((it) => buildTodoRowHtml(it, state)).join(''),
+      open: !closedFolds?.has(fid)
+    });
+  }
+  return [...byTag.entries()].map(([key, list]) => {
+    const fid = key ? `todo-tag-${key}` : 'todo-untagged';
+    return buildFoldDeck({
+      id: fid,
+      title: key ? `#${key}` : '未分类',
+      count: list.length,
+      rowsHtml: list.map((it) => buildTodoRowHtml(it, state)).join(''),
+      open: !closedFolds?.has(fid)
+    });
+  }).join('');
+}
+
+function buildGroupedTodoRows(todos, state, uiPrefs) {
+  const activeFilter = uiPrefs?.todoTagFilter || '';
+  const filtered = activeFilter
+    ? todos.filter((it) => normalizeTodoTags(it.tags).includes(activeFilter))
+    : todos;
+  const active = filtered.filter((item) => isTodoActive(item));
+  const retreated = filtered.filter((item) => !isTodoActive(item));
+  const decks = [];
+  if (active.length > 0) {
+    decks.push(
+      buildActiveTodoDecks(active, state, activeFilter, uiPrefs?.closedFolds)
+    );
+  }
+  if (retreated.length > 0) {
+    decks.push(buildFoldDeck({
+      id: 'todo-done',
+      title: '已完成或暂停',
+      count: retreated.length,
+      rowsHtml: retreated.map((item) => buildTodoRowHtml(item, state)).join(''),
+      open: Boolean(uiPrefs?.openFolds?.has('todo-done'))
+    }));
+  }
+  return `${buildTagFilterBarHtml(todos, activeFilter)}` +
+    `<div class="stack-sm">${decks.join('')}</div>`;
+}
+
+export function renderTodoView(state, composerState, uiPrefs) {
   const composer = composerState || {
     target: '@me',
     time: '07:30',
@@ -225,10 +310,10 @@ export function renderTodoView(state, composerState) {
   };
   const emptyHtml = '<div class="empty">暂无待办或唤醒任务<br>' +
     '<span class="row-meta">' +
-    '在上方输入事项，支持 @me 07:30 或 明天 / 工作日</span></div>';
+    '在上方输入事项，支持 @me 07:30 或 #工作</span></div>';
   const summary = state.todoSummary || summarizeTodos(state.todos);
   const listSection = state.todos.length > 0
-    ? buildGroupedTodoRows(state.todos, state)
+    ? buildGroupedTodoRows(state.todos, state, uiPrefs)
     : emptyHtml;
   return `<div class="foreground-stack">
     ${buildAppUpdateBannerHtml(state)}

@@ -4,6 +4,7 @@ import re
 from .agents import AGENT_ID_PATTERN
 from .calendar_svc import REMINDER_POLICIES, REPEAT_RULES
 from .errors import CliError
+from .qr_util import qr_to_terminal
 from .todo_cron import SCHEDULE_KINDS
 from .validators import HHMM_PATTERN
 
@@ -197,7 +198,22 @@ def select_columns(key: str | None, rows: list[dict]) -> list[str]:
     return list(rows[0])
 
 
+def format_pair_output(data: dict) -> str:
+    uri = str(data["pair_uri"])
+    qr_block = qr_to_terminal(uri) if len(uri.encode()) <= 134 else ""
+    lines = [
+        f"code: {data.get('code', '')}",
+        f"expires_at: {data.get('expires_at', '')}",
+        f"pair_uri: {uri}",
+    ]
+    if qr_block:
+        lines.extend(["", qr_block])
+    return "\n".join(lines)
+
+
 def format_table(data) -> str:
+    if isinstance(data, dict) and "pair_uri" in data:
+        return format_pair_output(data)
     if isinstance(data, dict) and len(data) == 1:
         key, value = next(iter(data.items()))
         if isinstance(value, list):

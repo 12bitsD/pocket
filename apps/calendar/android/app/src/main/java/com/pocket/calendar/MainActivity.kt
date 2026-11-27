@@ -1,6 +1,7 @@
 package com.pocket.calendar
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -11,9 +12,12 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.getcapacitor.BridgeActivity
+import org.json.JSONObject
 
 class MainActivity : BridgeActivity() {
     private val uiHandler = Handler(Looper.getMainLooper())
+    @Volatile
+    private var pendingPairUri: String? = null
 
     private val backCallback = object : OnBackPressedCallback(true) {
         override fun handleOnBackPressed() {
@@ -48,6 +52,32 @@ class MainActivity : BridgeActivity() {
         applySystemBars(dark = false)
         onBackPressedDispatcher.addCallback(this, backCallback)
         requestNotificationPermissionIfNeeded()
+        capturePairIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        capturePairIntent(intent)
+    }
+
+    fun consumePendingPairUri(): String? {
+        val uri = pendingPairUri
+        pendingPairUri = null
+        return uri
+    }
+
+    private fun capturePairIntent(intent: Intent?) {
+        val data = intent?.data ?: return
+        if (data.scheme != "pocket" || data.host != "pair") {
+            return
+        }
+        val raw = data.toString()
+        pendingPairUri = raw
+        val webView = bridge?.webView ?: return
+        val quoted = JSONObject.quote(raw)
+        val js = "window.__pocketOnPairUri&&window.__pocketOnPairUri($quoted)"
+        uiHandler.post { webView.evaluateJavascript(js, null) }
     }
 
     fun applySystemBars(dark: Boolean) {

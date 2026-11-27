@@ -1,16 +1,24 @@
 from datetime import timedelta
 import secrets
+from urllib.parse import urlencode
 import uuid
 
 from .auth import issue_token
 from .crypto import hash_secret
 from .errors import RpcError
+from .qr_util import qr_to_svg
 from .validators import require_text
 
 
 class PairingAttemptFailed(Exception):
     def __init__(self, code_id):
         self.code_id = code_id
+
+
+def build_pair_uri(public_url: str, code: str) -> str:
+    base = str(public_url or "").strip().rstrip("/")
+    qs = urlencode(dict(url=base, code=code))
+    return f"pocket://pair?{qs}"
 
 
 async def create_pairing(ctx, conn, identity, params):
@@ -32,7 +40,14 @@ async def create_pairing(ctx, conn, identity, params):
         """,
         (code_id, hash_secret(code), expires_at),
     )
-    return dict(code=code, expires_at=expires_at.isoformat())
+    pair_uri = build_pair_uri(ctx.settings.public_url, code)
+    qr_svg = qr_to_svg(pair_uri) if len(pair_uri.encode()) <= 134 else ""
+    return dict(
+        code=code,
+        expires_at=expires_at.isoformat(),
+        pair_uri=pair_uri,
+        qr_svg=qr_svg,
+    )
 
 
 async def claim_pairing(ctx, conn, identity, params):

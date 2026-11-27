@@ -5,12 +5,17 @@ import {
   minutesToHhmm,
   toMinutes
 } from '../domain/date-time.js';
+import { normalizeTodoTags } from '../domain/todo-model.js';
 import {
   runSafely,
   selectCalendarDate,
   showUndoToast,
   toggleSecretInput
 } from './dom-handlers.js';
+import {
+  handleDialogTagChipClick,
+  handleFeishuDialogSubmit
+} from './extra-handlers.js';
 import { handlePickerClick, syncPickerDisplay } from './pickers.js';
 
 const EVENT_REMINDER_FLAGS = Object.freeze({
@@ -245,6 +250,11 @@ export function handleDialogClick(ui, event) {
     toggleSecretInput(form, secretBtn);
     return;
   }
+  const tagBtn = event.target.closest('[data-dialog-tag]');
+  if (tagBtn) {
+    handleDialogTagChipClick(form, tagBtn);
+    return;
+  }
   const todayIso = ui.store.getState().todayIso;
   const picked = handlePickerClick(form, event, todayIso, (tid) => {
     if (tid === 'ev-start') {
@@ -274,7 +284,8 @@ function submitTodoDialog(ui, fd, submitBtn) {
     time_hhmm: fd.get('time'),
     once_date: fd.get('date'),
     weekly_dow: fd.get('weekly_dow'),
-    locked: target === '@me' && Boolean(fd.get('locked'))
+    locked: target === '@me' && Boolean(fd.get('locked')),
+    tags: normalizeTodoTags(fd.get('tags'))
   });
   runSafely(ui, call, 'Todo 已保存', {
     onOk: () => closeFormDialog(ui),
@@ -325,6 +336,10 @@ export function handleDialogSubmit(ui, event) {
       onOk: () => closeFormDialog(ui),
       trigger: submitBtn
     });
+    return;
+  }
+  if (kind === 'feishu') {
+    handleFeishuDialogSubmit(ui, fd, submitBtn, () => closeFormDialog(ui));
     return;
   }
   if (kind === 'todo') {

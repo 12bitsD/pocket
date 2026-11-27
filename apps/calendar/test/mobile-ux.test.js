@@ -249,5 +249,9 @@ test('uses custom paper time/date pickers with no native OS pickers', () => {
   assert.equal(timeInput.value, '13:11');
   assert.equal(labelEl.textContent, '13:11');
   assert.deepEqual(changes, [['ev-start', '13:11']]);
+  assert.ok(
+    views[0].includes('</div>\n      <div class="picker-slot"'),
+    'time picker slots must sit full-width below range row'
+  );
   store.destroy();
 });
