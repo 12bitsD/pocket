@@ -20,7 +20,7 @@ def resolvedKeystoreFile = envKeystorePath
 def resolvedStorePassword = System.getenv('POCKET_KEYSTORE_PASSWORD') ?: 'pocketrelease'
 def resolvedKeyAlias = System.getenv('POCKET_KEY_ALIAS') ?: 'pocket-calendar'
 def resolvedKeyPassword = System.getenv('POCKET_KEY_PASSWORD') ?: resolvedStorePassword
-def resolvedVersionName = (project.findProperty('pocketVersionName') ?: '0.2.1').toString()
+def resolvedVersionName = (project.findProperty('pocketVersionName') ?: '0.2.2').toString()
 def explicitCode = project.findProperty('pocketVersionCode')?.toString()?.toInteger()
 def resolvedVersionCode = explicitCode ?: computeSemverCode(resolvedVersionName)
 

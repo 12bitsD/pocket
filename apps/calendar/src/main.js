@@ -105,8 +105,9 @@ function syncShellChrome(ui, state) {
   ui.doc.querySelector('#back-button').hidden = state.page !== 'settings';
   const createBtn = ui.doc.querySelector('#create-button');
   createBtn.hidden = !cta;
+  const createLabel = ui.doc.querySelector('#create-button-label');
   if (cta) {
-    createBtn.textContent = cta;
+    (createLabel || createBtn).textContent = cta;
   }
   syncBottomNavDom(ui.doc, ui.chromeCache, state.page);
 }

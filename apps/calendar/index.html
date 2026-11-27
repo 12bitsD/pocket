@@ -5,6 +5,8 @@
   <meta name="viewport"
     content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#f6f2e9" id="theme-color-meta">
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='16 16 76 76'%3E%3Crect x='16' y='16' width='76' height='76' rx='18' fill='%23efe9dd'/%3E%3Crect x='32' y='32.5' width='47.5' height='48' rx='6' fill='%23ddd3c2'/%3E%3Crect x='28.5' y='28' width='48' height='49.5' rx='6.5' fill='%23fdfcf8' stroke='%23cfc6b6' stroke-width='1.2'/%3E%3Cpath d='M28.5 34.5A6.5 6.5 0 0 1 35 28h35a6.5 6.5 0 0 1 6.5 6.5V42h-48z' fill='%231d1c19'/%3E%3Ccircle cx='39.5' cy='35' r='2' fill='%23f6f1e7'/%3E%3Ccircle cx='56.5' cy='35' r='2' fill='%23f6f1e7'/%3E%3Cpath d='M64.5 28h6v13.5l-3-2.4-3 2.4z' fill='%23e05a3f'/%3E%3Ccircle cx='39' cy='51.5' r='2' fill='%23beb6a7'/%3E%3Ccircle cx='48.5' cy='51.5' r='2' fill='%23beb6a7'/%3E%3Ccircle cx='58' cy='51.5' r='2' fill='%23beb6a7'/%3E%3Ccircle cx='39' cy='60.5' r='2' fill='%238c8579'/%3E%3Ccircle cx='48.5' cy='60.5' r='5.8' fill='%23c44326' fill-opacity='.15'/%3E%3Ccircle cx='48.5' cy='60.5' r='4' fill='%23c44326'/%3E%3Ccircle cx='58' cy='60.5' r='2.1' fill='%231d1c19'/%3E%3Ccircle cx='39' cy='69.5' r='2.1' fill='%231d1c19'/%3E%3Ccircle cx='48.5' cy='69.5' r='2' fill='%23beb6a7'/%3E%3Ccircle cx='58' cy='69.5' r='2' fill='%23beb6a7'/%3E%3Crect x='66.2' y='49.5' width='2.6' height='22' rx='1.3' fill='%23e2dacb'/%3E%3Crect x='66.2' y='56.5' width='2.6' height='8' rx='1.3' fill='%23c44326'/%3E%3C/svg%3E">
   <title>Pocket Calendar</title>
 </head>
 <body data-theme="white">
@@ -21,14 +23,35 @@
     <header class="topbar">
       <div class="title-group">
         <button class="cmd-quiet" id="back-button" type="button"
-          aria-label="返回" hidden>← 返回</button>
+          aria-label="返回" hidden>
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"
+            fill="none" stroke="currentColor" stroke-width="1.8"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 6l-6 6 6 6"/>
+          </svg>
+          <span>返回</span>
+        </button>
         <h1 id="page-title" tabindex="-1">今日日程</h1>
       </div>
       <div class="top-actions">
-        <button class="cmd-quiet" id="settings-button"
-          type="button">设置</button>
-        <button class="cmd-primary" id="create-button"
-          type="button">+ 新建</button>
+        <button class="cmd-quiet" id="settings-button" type="button">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"
+            fill="none" stroke="currentColor" stroke-width="1.7"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 7h16M4 17h16"/>
+            <circle cx="9" cy="7" r="2.2" fill="var(--paper)"/>
+            <circle cx="15" cy="17" r="2.2" fill="var(--paper)"/>
+          </svg>
+          <span>设置</span>
+        </button>
+        <button class="cmd-primary" id="create-button" type="button">
+          <svg class="btn-icon primary-icon" viewBox="0 0 24 24"
+            aria-hidden="true" fill="none" stroke="currentColor"
+            stroke-width="2.1" stroke-linecap="round">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          <span id="create-button-label">新建</span>
+        </button>
       </div>
     </header>
 
@@ -41,7 +64,13 @@
     <div class="dialog-head">
       <h2 id="dialog-title">新建</h2>
       <button class="dialog-close-btn" id="dialog-close" type="button"
-        aria-label="关闭">✕</button>
+        aria-label="关闭">
+        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"
+          fill="none" stroke="currentColor" stroke-width="1.85"
+          stroke-linecap="round">
+          <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>
+        </svg>
+      </button>
     </div>
     <form class="dialog-body" id="active-form" method="dialog"></form>
   </dialog>

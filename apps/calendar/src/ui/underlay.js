@@ -3,8 +3,8 @@ import { escapeHtml, toMinutes } from '../domain/date-time.js';
 import { isTodoActive, summarizeTodos } from '../domain/todo-model.js';
 
 export const PAGE_META = Object.freeze({
-  agenda: Object.freeze(['今日日程', '/today', '+ 新建']),
-  month: Object.freeze(['月历', '/month', '+ 新建']),
+  agenda: Object.freeze(['今日日程', '/today', '新建']),
+  month: Object.freeze(['月历', '/month', '新建']),
   todo: Object.freeze(['待办', '/todo', '']),
   settings: Object.freeze(['设置', '/config', ''])
 });
@@ -14,6 +14,41 @@ export const NAV_ITEMS = Object.freeze([
   Object.freeze(['month', '月历', 'm']),
   Object.freeze(['todo', '待办', 't'])
 ]);
+
+const SVG_ATTR = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"';
+
+export const CHEVRON_LEFT_SVG = '<svg class="btn-icon" viewBox="0 0 24 24" ' +
+  'aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+  'stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M14.5 6.5L9 12l5.5 5.5"/></svg>';
+
+export const CHEVRON_RIGHT_SVG = '<svg class="btn-icon" viewBox="0 0 24 24" ' +
+  'aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+  'stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M9.5 6.5L15 12l-5.5 5.5"/></svg>';
+
+const NAV_ICONS = Object.freeze({
+  agenda: `<svg ${SVG_ATTR}>` +
+    '<circle class="nav-icon-wash" cx="12" cy="12" r="8.5" stroke="none"/>' +
+    '<circle cx="12" cy="12" r="8.5"/>' +
+    '<path d="M12 7.5V12l3 2"/>' +
+    '<circle class="nav-icon-accent" cx="12" cy="12" r="1.3" ' +
+    'stroke="none"/></svg>',
+  month: `<svg ${SVG_ATTR}>` +
+    '<path class="nav-icon-fill" stroke="none" ' +
+    'd="M3.5 7.5A2.5 2.5 0 0 1 6 5h12a2.5 2.5 0 0 1 2.5 2.5V9.8h-17z"/>' +
+    '<rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/>' +
+    '<path d="M3.5 9.8h17M8 3.2v3M16 3.2v3"/>' +
+    '<circle class="nav-icon-accent" cx="12" cy="14.9" r="1.55" ' +
+    'stroke="none"/></svg>',
+  todo: `<svg ${SVG_ATTR}>` +
+    '<rect class="nav-icon-wash" x="4" y="4" width="16" height="16" rx="3" ' +
+    'stroke="none"/>' +
+    '<rect x="4" y="4" width="16" height="16" rx="3"/>' +
+    '<path class="nav-icon-stroke-accent" d="M8.5 12.2l2.4 2.4 4.8-5"/>' +
+    '</svg>'
+});
 
 const BRAILLE_LEFT = Object.freeze([0x01, 0x02, 0x04, 0x40]);
 const BRAILLE_RIGHT = Object.freeze([0x08, 0x10, 0x20, 0x80]);
@@ -205,7 +240,9 @@ export function syncBottomNavDom(doc, cache, page) {
     ([id, label, key]) => (
       `<button class="nav-item" type="button" data-page="${id}" ` +
       `${page === id ? 'aria-current="page"' : ''}>` +
-      `<kbd>[${key}]</kbd><span>${label}</span></button>`
+      `<span class="nav-icon" aria-hidden="true">${NAV_ICONS[id]}</span>` +
+      `<span class="nav-label"><span>${label}</span>` +
+      `<kbd>[${key}]</kbd></span></button>`
     )
   ).join('');
 }

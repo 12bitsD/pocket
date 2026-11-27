@@ -251,7 +251,8 @@ class AlarmRingingService : Service() {
             piFlags
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(R.drawable.ic_stat_pocket)
+            .setColor(getColor(R.color.vermilion))
             .setContentTitle(title)
             .setContentText(subtitle.ifBlank { "ALARM RINGING" })
             .setCategory(NotificationCompat.CATEGORY_ALARM)

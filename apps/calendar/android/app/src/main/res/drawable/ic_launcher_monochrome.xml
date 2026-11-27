@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Outer calendar card outline -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M36.5,29h35c3.87,0 7,3.13 7,7v36c0,3.87 -3.13,7 -7,7h-35c-3.87,0 -7,-3.13 -7,-7v-36c0,-3.87 3.13,-7 7,-7z"
+        android:strokeColor="#000000"
+        android:strokeWidth="3.2" />
+    <!-- Binding spine with punched eyelets + notched ribbon cutout -->
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M29.5,36C29.5,32.13 32.63,29 36.5,29H71.5C75.37,29 78.5,32.13 78.5,36V43H29.5Z M41,33.6a2.3,2.3 0,1 1,0 4.6a2.3,2.3 0,1 1,0 -4.6z M57.5,33.6a2.3,2.3 0,1 1,0 4.6a2.3,2.3 0,1 1,0 -4.6z M65.5,29H71.5V41L68.5,38.6L65.5,41Z" />
+    <!-- 3x3 Swiss dot matrix + today seal + right chronometer bar -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M40,50.5a2.2,2.2 0,1 1,0 4.4a2.2,2.2 0,1 1,0 -4.4z M49.5,50.5a2.2,2.2 0,1 1,0 4.4a2.2,2.2 0,1 1,0 -4.4z M59,50.5a2.2,2.2 0,1 1,0 4.4a2.2,2.2 0,1 1,0 -4.4z M40,59.5a2.2,2.2 0,1 1,0 4.4a2.2,2.2 0,1 1,0 -4.4z M49.5,57.5a4.2,4.2 0,1 1,0 8.4a4.2,4.2 0,1 1,0 -8.4z M59,59.5a2.2,2.2 0,1 1,0 4.4a2.2,2.2 0,1 1,0 -4.4z M40,68.5a2.2,2.2 0,1 1,0 4.4a2.2,2.2 0,1 1,0 -4.4z M49.5,68.5a2.2,2.2 0,1 1,0 4.4a2.2,2.2 0,1 1,0 -4.4z M59,68.5a2.2,2.2 0,1 1,0 4.4a2.2,2.2 0,1 1,0 -4.4z M68.5,50.5c0.9,0 1.6,0.7 1.6,1.6v19c0,0.9 -0.7,1.6 -1.6,1.6s-1.6,-0.7 -1.6,-1.6v-19c0,-0.9 0.7,-1.6 1.6,-1.6z" />
+</vector>

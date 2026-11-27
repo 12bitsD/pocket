@@ -4,6 +4,7 @@ import {
   escapeHtml,
   pad2
 } from '../domain/date-time.js';
+import { CHEVRON_LEFT_SVG, CHEVRON_RIGHT_SVG } from './underlay.js';
 
 const HOURS = Object.freeze(Array.from({ length: 24 }, (_, idx) => pad2(idx)));
 const MINUTE_STEPS = Object.freeze(
@@ -148,9 +149,11 @@ export function buildDatePanelHtml(targetId, selectedIso, todayIso, viewYm) {
         <button class="ghost-chip" type="button"
           data-pick-cal-today data-picker-target="${tid}">今天</button>
         <button class="nav-arrow-btn" type="button" aria-label="上个月"
-          data-pick-cal-step="-1" data-picker-target="${tid}">‹</button>
+          data-pick-cal-step="-1"
+          data-picker-target="${tid}">${CHEVRON_LEFT_SVG}</button>
         <button class="nav-arrow-btn" type="button" aria-label="下个月"
-          data-pick-cal-step="1" data-picker-target="${tid}">›</button>
+          data-pick-cal-step="1"
+          data-picker-target="${tid}">${CHEVRON_RIGHT_SVG}</button>
       </div>
     </div>
     <div class="cal-weekdays">${weekHtml}</div>

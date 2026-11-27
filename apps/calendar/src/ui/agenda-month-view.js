@@ -9,6 +9,7 @@ import {
   localDateTimeMs
 } from '../domain/date-time.js';
 import { buildAppUpdateBannerHtml } from '../native/update-bridge.js';
+import { CHEVRON_LEFT_SVG, CHEVRON_RIGHT_SVG } from './underlay.js';
 
 const WEEK_SHORT = Object.freeze(['一', '二', '三', '四', '五', '六', '日']);
 
@@ -205,9 +206,9 @@ export function renderMonthView(state) {
           <button class="ghost-chip" type="button"
             data-month-today>今天</button>
           <button class="nav-arrow-btn" type="button"
-            aria-label="上个月" data-month-step="-1">‹</button>
+            aria-label="上个月" data-month-step="-1">${CHEVRON_LEFT_SVG}</button>
           <button class="nav-arrow-btn" type="button"
-            aria-label="下个月" data-month-step="1">›</button>
+            aria-label="下个月" data-month-step="1">${CHEVRON_RIGHT_SVG}</button>
         </div>
       </div>
       <div class="cal-weekdays">${weekHtml}</div>
