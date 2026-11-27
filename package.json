@@ -11,10 +11,10 @@
     "build": "npm --workspace @pocket/calendar run build",
     "check": "node scripts/check-apps.js",
     "test": "node --test packages/agent-core/test/*.test.js apps/calendar/test/*.test.js",
-    "style": "bits style check apps packages cloud scripts/check-apps.js scripts/eval --config bits.toml --baseline bits-baseline.json",
+    "style": "bits style check apps packages cloud scripts/check-apps.js scripts/push-android-release.mjs scripts/eval --config bits.toml --baseline bits-baseline.json",
     "style:diff": "bits style check --diff --commit origin/main --config bits.toml",
     "style:fix": "bits style fix --diff --commit origin/main --config bits.toml",
-    "style:report": "bits style report apps packages cloud scripts/check-apps.js scripts/eval --config bits.toml",
+    "style:report": "bits style report apps packages cloud scripts/check-apps.js scripts/push-android-release.mjs scripts/eval --config bits.toml",
     "verify": "bash scripts/verify.sh --step all"
   },
   "engines": {

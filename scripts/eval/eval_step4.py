@@ -26,6 +26,8 @@ def verify_dist_bundle() -> None:
     js_count = 0
     css_count = 0
     for ref in refs:
+        if ref.startswith("data:"):
+            continue
         assert not ref.startswith("/"), "Asset path must be relative: " + ref
         clean_ref = ref[2:] if ref.startswith("./") else ref
         asset_path = (dist_dir / clean_ref).resolve()

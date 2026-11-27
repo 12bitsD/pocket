@@ -41,6 +41,7 @@ BITS_TARGETS = (
     "packages",
     "cloud",
     "scripts/check-apps.js",
+    "scripts/push-android-release.mjs",
     "scripts/eval",
 )
 BITS_CHECKS = (
