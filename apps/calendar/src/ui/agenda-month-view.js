@@ -6,9 +6,9 @@ import {
   buildMonthCells,
   escapeHtml,
   formatDelta,
-  localDateTimeMs,
-  pad2
+  localDateTimeMs
 } from '../domain/date-time.js';
+import { buildAppUpdateBannerHtml } from '../native/update-bridge.js';
 
 const WEEK_SHORT = Object.freeze(['一', '二', '三', '四', '五', '六', '日']);
 
@@ -23,16 +23,6 @@ function buildReminderBadge(ev) {
   return '';
 }
 
-function buildSourceBadge(ev) {
-  if (ev.source === 'agent') {
-    return '<span class="mark-tag neutral">@agent</span>';
-  }
-  if (typeof ev.source === 'string' && ev.source.startsWith('@')) {
-    return `<span class="mark-tag neutral">${escapeHtml(ev.source)}</span>`;
-  }
-  return '';
-}
-
 function buildEventTags(ev) {
   const tags = [];
   if (ev.has_conflict) {
@@ -42,11 +32,17 @@ function buildEventTags(ev) {
   if (rem) {
     tags.push(rem);
   }
-  const src = buildSourceBadge(ev);
-  if (src) {
-    tags.push(src);
-  }
   return tags.join(' ');
+}
+
+function formatEventSourceMeta(ev) {
+  if (ev.source === 'agent') {
+    return '@agent';
+  }
+  if (typeof ev.source === 'string' && ev.source.startsWith('@')) {
+    return ev.source;
+  }
+  return '';
 }
 
 function buildHeroReceiptHtml(ev) {
@@ -64,52 +60,54 @@ function buildAgendaHeroHtml(next, nowMs) {
   let dotCls = 'mark';
   let headText = '今日已结束 · 末场回顾';
   if (startMs > nowMs) {
-    headText = `<b>${formatDelta(startMs - nowMs)}</b> 后开始 · 今日下一场`;
+    headText = `<b>${formatDelta(startMs - nowMs)}</b> 后开始`;
   } else if (endMs >= nowMs) {
-    headText = '正在进行 · 今日当前日程';
+    headText = '正在进行';
   } else {
     dotCls = 'off';
   }
-  const badges = buildEventTags(next) ||
-    '<span class="mark-tag neutral">静默日程</span>';
+  const badges = buildEventTags(next);
   const meta = next.location || formatRepeatLabel(next.repeat_rule);
   const id = escapeHtml(next.event_id);
-  const span = `${escapeHtml(next.start_hhmm)}–${escapeHtml(next.end_hhmm)}`;
+  const span = `${escapeHtml(next.start_hhmm)} – ${escapeHtml(next.end_hhmm)}`;
   return `<article class="hero">
     <div class="hero-top">
       <span class="t-minus"><i class="dot ${dotCls}"></i>${headText}</span>
-      <span class="inline-actions">${badges}</span>
-    </div>
-    <div class="hero-mid">
-      <button class="hero-main-btn" type="button" data-edit="${id}">
-        <span class="hero-range">${span}</span>
-      </button>
-    </div>
-    <div class="hero-foot">
-      <div class="hero-name">
-        ${escapeHtml(next.title)} <span>${escapeHtml(meta)}</span>
-      </div>
       ${buildHeroReceiptHtml(next)}
+    </div>
+    <button class="hero-main-btn" type="button" data-edit="${id}">
+      <span class="hero-range">${span}</span>
+      <span class="hero-event-title">${escapeHtml(next.title)}</span>
+    </button>
+    <div class="hero-foot">
+      <span class="hero-meta-text">${escapeHtml(meta)}</span>
+      <span class="inline-actions">${badges}</span>
     </div>
   </article>`;
 }
 
 function buildEventRowHtml(ev, subLabel, rowCls) {
   const repeatText = formatRepeatLabel(ev.repeat_rule);
-  const locText = ev.location || '无地点';
-  const smallHtml = subLabel ? `<small>${escapeHtml(subLabel)}</small>` : '';
+  const srcMeta = formatEventSourceMeta(ev);
+  const metaParts = [
+    ev.location || (repeatText !== '不重复' ? repeatText : ''),
+    srcMeta
+  ].filter(Boolean);
+  const locText = metaParts.join(' · ');
+  const subText = subLabel || ev.end_hhmm;
   const id = escapeHtml(ev.event_id);
-  const span = `${escapeHtml(ev.start_hhmm)}–${escapeHtml(ev.end_hhmm)}`;
-  const meta = `${escapeHtml(locText)} · ${escapeHtml(repeatText)}`;
   const cls = rowCls ? `row ${rowCls}` : 'row';
   return `<article class="${cls}">
     <button class="row-btn event-grid" type="button" data-edit="${id}">
-      <span class="row-span">${span}${smallHtml}</span>
+      <span class="row-span">
+        ${escapeHtml(ev.start_hhmm)}
+        <small>${escapeHtml(subText)}</small>
+      </span>
       <span>
         <span class="row-title">
           ${escapeHtml(ev.title)} ${buildEventTags(ev)}
         </span>
-        <span class="row-meta">${meta}</span>
+        ${locText ? `<span class="row-meta">${escapeHtml(locText)}</span>` : ''}
       </span>
     </button>
   </article>`;
@@ -131,18 +129,16 @@ export function renderAgendaView(state, nowMs) {
       '+ 新建今日日程</button></div>';
   const rows = others.map((ev) => {
     const past = localDateTimeMs(ev.instance_date, ev.end_hhmm) < now;
-    return buildEventRowHtml(ev, past ? '已结束' : '今天', past ? 'disabled' : '');
+    return buildEventRowHtml(ev, past ? '已结束' : '', past ? 'disabled' : '');
   }).join('');
-  const emptyRest = '<div class="row" style="padding:14px 2px">' +
-    '<span class="row-meta">' +
-    '今日其余时段空闲（跨天日程在 [m] 月历查看）</span></div>';
-  const todayHead = `TODAY · ${escapeHtml(state.todayIso)} ` +
-    `(其余 ${others.length} 场)`;
+  const emptyRest = '<div class="row compact">' +
+    '<span class="row-meta">今日其余时段空闲</span></div>';
+  const todayHead = `今日 · ${escapeHtml(state.todayIso)}`;
   return `<div class="foreground-stack">
+    ${buildAppUpdateBannerHtml(state)}
     ${hero}
     <div class="col-head">
       <span>${todayHead}</span>
-      <span>REMINDER</span>
     </div>
     <div class="rows">${rows || emptyRest}</div>
   </div>`;
@@ -178,7 +174,7 @@ function buildMonthCellHtml(cell, state, dayEvents) {
   return `<button class="${classes.join(' ')}" type="button" ` +
     `aria-label="${aria}" ` +
     `data-pick-date="${escapeHtml(cell.iso)}" aria-selected="${selected}">
-    <span>${pad2(cell.day)}</span>
+    <span class="cal-num">${cell.day}</span>
     <span class="cal-dots">${dots}</span>
   </button>`;
 }
@@ -186,7 +182,7 @@ function buildMonthCellHtml(cell, state, dayEvents) {
 export function renderMonthView(state) {
   const cells = buildMonthCells(state.viewYear, state.viewMonth);
   const byDay = groupEventsByDate(state.monthEvents);
-  const monthLabel = `${state.viewYear}-${pad2(state.viewMonth + 1)}`;
+  const monthLabel = `${state.viewYear}年 ${state.viewMonth + 1}月`;
   const gridHtml = cells
     .map((c) => buildMonthCellHtml(c, state, byDay.get(c.iso) || []))
     .join('');
@@ -204,14 +200,14 @@ export function renderMonthView(state) {
   return `<div class="foreground-stack">
     <div class="cal-card">
       <div class="cal-toolbar">
-        <button class="cmd-quiet outlined mini" type="button"
-          data-month-step="-1">← prev</button>
         <span class="cal-month-label">${monthLabel}</span>
-        <div class="date-shortcuts">
-          <button class="cmd-quiet outlined mini" type="button"
-            data-month-today>today</button>
-          <button class="cmd-quiet outlined mini" type="button"
-            data-month-step="1">next →</button>
+        <div class="inline-actions">
+          <button class="ghost-chip" type="button"
+            data-month-today>今天</button>
+          <button class="nav-arrow-btn" type="button"
+            aria-label="上个月" data-month-step="-1">‹</button>
+          <button class="nav-arrow-btn" type="button"
+            aria-label="下个月" data-month-step="1">›</button>
         </div>
       </div>
       <div class="cal-weekdays">${weekHtml}</div>
@@ -219,8 +215,8 @@ export function renderMonthView(state) {
     </div>
     <div class="col-head">
       <span>${selHead}</span>
-      <button class="cmd-quiet outlined mini" type="button"
-        data-open-event>+ 在该日新建</button>
+      <button class="cmd-quiet mini" type="button"
+        data-open-event>+ 添加</button>
     </div>
     <div class="rows">${dayRows || emptyDay}</div>
   </div>`;

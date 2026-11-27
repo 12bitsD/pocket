@@ -1,5 +1,6 @@
 import { describeConnection } from '../domain/calendar-model.js';
 import { escapeHtml } from '../domain/date-time.js';
+import { buildAppUpdateRowHtml } from '../native/update-bridge.js';
 
 const PERMISSION_ITEMS = Object.freeze([
   Object.freeze(['exactAlarm', '精确闹钟权限', 'SCHEDULE_EXACT_ALARM']),
@@ -153,8 +154,12 @@ function buildPermissionsCardHtml(perms) {
   }).join('');
   return `<div class="col-head">
       <span>DEVICE ALARM PERMISSIONS (4)</span>
-      <button class="cmd-quiet outlined mini" type="button"
-        aria-label="重新自检设备响铃权限" data-perm-refresh>重新自检</button>
+      <div class="inline-actions">
+        <button class="cmd-quiet outlined mini" type="button"
+          data-perm-test-ring>测试响铃</button>
+        <button class="cmd-quiet outlined mini" type="button"
+          aria-label="重新自检设备响铃权限" data-perm-refresh>自检</button>
+      </div>
     </div>
     <div class="rows" role="group" aria-label="设备闹钟权限自检">
       ${rowsHtml}
@@ -269,6 +274,16 @@ export function renderSettingsView(state, uiPrefs) {
   const agentsSection = state.agentGrants.length > 0
     ? `<div class="jobs">${agentsHtml}</div>`
     : emptyAgents;
+  const isDark = state.theme === 'black';
+  const themeRow = `<div class="row compact">
+      <span class="row-title">纸面主题</span>
+      <div class="seg-bar compact-seg">
+        <button type="button" data-set-theme="white"
+          aria-pressed="${!isDark}">暖白纸</button>
+        <button type="button" data-set-theme="black"
+          aria-pressed="${isDark}">夜间炭纸</button>
+      </div>
+    </div>`;
   return `<div class="foreground-stack">
     <article class="hero">
       <div class="hero-top">
@@ -279,6 +294,7 @@ export function renderSettingsView(state, uiPrefs) {
     </article>
     ${buildPermissionsCardHtml(state.nativePermissions)}
     ${buildMintedTokenBanner(state)}
+    <div class="rows">${themeRow}${buildAppUpdateRowHtml(state)}</div>
     <div class="col-head">
       <span>BOUND AGENTS (${state.agentGrants.length})</span>
       <button class="cmd-quiet outlined mini" type="button"
@@ -286,7 +302,7 @@ export function renderSettingsView(state, uiPrefs) {
     </div>
     ${agentsSection}
     ${buildTokensFoldHtml(state, state.mode === 'cloud' && canAdmin)}
-    <p class="man-line">
+    <p class="man-line kbd-hint">
       快捷键：[d] 今日 · [m] 月历 · [t] Todo · [c] 配置 · [n] 新建 · [b] 纸色
     </p>
   </div>`;

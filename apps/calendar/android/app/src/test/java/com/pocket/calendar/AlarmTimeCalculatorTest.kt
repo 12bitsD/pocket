@@ -167,6 +167,15 @@ class AlarmTimeCalculatorTest {
                 nowMs
             )
         )
+
+        val nearStartNow = msAt("2026-11-24T09:50")
+        assertEquals(
+            msAt("2026-11-24T10:00"),
+            AlarmTimeCalculator.computeNextTriggerMillis(
+                eventAlarm,
+                nearStartNow
+            )
+        )
     }
 
     @Test

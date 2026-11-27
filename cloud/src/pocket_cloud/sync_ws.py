@@ -4,6 +4,7 @@ import json
 
 from fastapi import WebSocketDisconnect
 
+from .app_releases import scan_local_latest
 from .auth import authenticate_token
 from .errors import RpcError
 from .sync_actions import (
@@ -178,7 +179,7 @@ async def load_initial_catchup(
 
 
 async def send_catchup_replay(
-    websocket, latest_seq: int, replay_frames: list[dict]
+    ctx, websocket, latest_seq: int, replay_frames: list[dict]
 ) -> int | None:
     for frame in replay_frames:
         if not await send_frame_safe(websocket, frame):
@@ -186,6 +187,9 @@ async def send_catchup_replay(
     ack = dict(
         type="HELLO_ACK", latest_seq=latest_seq, replayed=len(replay_frames)
     )
+    latest_app = scan_local_latest(ctx.settings.releases_dir)
+    if latest_app is not None:
+        ack["latest_app"] = latest_app
     if not await send_frame_safe(websocket, ack):
         return None
     return latest_seq
@@ -204,7 +208,7 @@ async def prepare_and_replay_session(
     if sub.kicked or not active:
         await close_socket_quietly(websocket, 4401, "Token revoked")
         return None
-    return await send_catchup_replay(websocket, latest, frames)
+    return await send_catchup_replay(ctx, websocket, latest, frames)
 
 
 async def stream_session(

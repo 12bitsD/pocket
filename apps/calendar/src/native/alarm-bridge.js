@@ -245,8 +245,8 @@ async function executeAlarmSync(rt) {
   if (nextHash === rt.lastSpecHash && !hasPendingQueuedStatus(snap)) {
     return;
   }
-  rt.lastSpecHash = nextHash;
   const res = await rt.plugin.syncAlarms({ alarms });
+  rt.lastSpecHash = nextHash;
   if (!rt.disposed) {
     await applyArmResults(rt, res?.results);
   }
@@ -299,6 +299,7 @@ export function attachNativeAlarmBridge(ctx, storeApi, options) {
       refreshPermissions: async () => null,
       openPermission: async () => null,
       drainRingingEvents: async () => [],
+      testRing: async () => null,
       destroy: () => {}
     });
   }
@@ -321,6 +322,12 @@ export function attachNativeAlarmBridge(ctx, storeApi, options) {
       return plugin.openPermissionSettings({ target });
     },
     drainRingingEvents: ctrl.drainRingingEvents,
+    testRing: async () => {
+      if (ctrl.rt.disposed || typeof plugin.testRing !== 'function') {
+        return null;
+      }
+      return plugin.testRing();
+    },
     destroy: () => {
       ctrl.rt.disposed = true;
       unsubStore();

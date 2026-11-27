@@ -1,15 +1,18 @@
 package com.pocket.calendar
 
+import androidx.core.content.ContextCompat
 import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import java.util.concurrent.Executors
 import org.json.JSONObject
 
 @CapacitorPlugin(name = "PocketAlarm")
 class PocketAlarmPlugin : Plugin() {
+    private val updateExecutor = Executors.newSingleThreadExecutor()
 
     @PluginMethod
     fun syncAlarms(call: PluginCall) {
@@ -83,6 +86,86 @@ class PocketAlarmPlugin : Plugin() {
                 put("target", target)
             }
         )
+    }
+
+    @PluginMethod
+    fun setSystemTheme(call: PluginCall) {
+        val dark = call.getString("theme") == "black"
+        val host = activity as? MainActivity
+        if (host == null) {
+            call.resolve(JSObject().apply { put("applied", false) })
+            return
+        }
+        host.runOnUiThread {
+            host.applySystemBars(dark)
+            call.resolve(JSObject().apply { put("applied", true) })
+        }
+    }
+
+    @PluginMethod
+    fun getAppInfo(call: PluginCall) {
+        val info = AppUpdateInstaller.getInstalledInfo(context)
+        call.resolve(
+            JSObject().apply {
+                put("versionName", info.versionName)
+                put("versionCode", info.versionCode)
+                put("canInstallUpdates", info.canInstallUpdates)
+            }
+        )
+    }
+
+    @PluginMethod
+    fun installAppUpdate(call: PluginCall) {
+        val url = call.getString("url")?.trim().orEmpty()
+        if (url.isEmpty()) {
+            call.reject("Missing update download URL")
+            return
+        }
+        val spec = UpdateInstallSpec(
+            downloadUrl = url,
+            bearerToken = call.getString("token")?.trim().orEmpty(),
+            expectedSha256 = call.getString("sha256")?.trim().orEmpty(),
+            versionName = call.getString("versionName")?.trim().orEmpty()
+        )
+        updateExecutor.execute {
+            try {
+                val res = AppUpdateInstaller.downloadAndInstall(context, spec)
+                call.resolve(
+                    JSObject().apply {
+                        put("status", res.status)
+                        put("sha256", res.sha256)
+                    }
+                )
+            } catch (err: Exception) {
+                call.reject(err.message ?: "App update failed", err)
+            }
+        }
+    }
+
+    @PluginMethod
+    fun testRing(call: PluginCall) {
+        val testRec = AlarmRecord(
+            alarmKey = "test:preview",
+            entityType = "todo",
+            entityId = "test_preview",
+            title = "Pocket 闹钟测试",
+            subtitle = "验证声音、震动与锁屏弹窗",
+            scheduleKind = "once",
+            timeHhmm = "00:00",
+            timezone = "Asia/Shanghai"
+        )
+        val svcIntent = AlarmRingingService.buildServiceIntent(
+            context,
+            AlarmRingingService.ACTION_START_RINGING,
+            testRec.alarmKey,
+            testRec
+        )
+        try {
+            ContextCompat.startForegroundService(context, svcIntent)
+            call.resolve(JSObject().apply { put("started", true) })
+        } catch (err: Exception) {
+            call.reject("Failed to trigger test alarm", err)
+        }
     }
 
     private fun buildSyncResultJson(

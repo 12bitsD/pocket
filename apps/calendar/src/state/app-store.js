@@ -5,6 +5,12 @@ import {
   detectNativeAndroid
 } from '../native/alarm-bridge.js';
 import {
+  applyIncomingRelease,
+  checkAppUpdateAction,
+  dismissAppUpdateAction,
+  installAppUpdateAction
+} from '../native/update-bridge.js';
+import {
   createPairingAction,
   createTokenAction,
   refreshAdminLists,
@@ -87,7 +93,13 @@ function attachStoreClient(ctx, options) {
       ctx.state = reapplyOfflineOverlay(applySyncFrame(ctx.state, frame));
       notifySubscribers(ctx);
     },
+    onAppUpdate: (release) => {
+      applyIncomingRelease(ctx, release).catch(() => {});
+    },
     onHelloAck: (ack) => {
+      if (ack?.latest_app) {
+        applyIncomingRelease(ctx, ack.latest_app).catch(() => {});
+      }
       handleHelloAckSession(ctx, ack).catch((err) => {
         ctx.lastBootError = err;
       });
@@ -181,7 +193,11 @@ function buildStoreApi(ctx) {
     flushPersistence: () => ctx.persistence.flushNow(),
     refreshNativePermissions: () => ctx.alarmBridge.refreshPermissions(),
     openNativePermission: (target) => ctx.alarmBridge.openPermission(target),
-    drainNativeRingingEvents: () => ctx.alarmBridge.drainRingingEvents()
+    drainNativeRingingEvents: () => ctx.alarmBridge.drainRingingEvents(),
+    triggerTestAlarm: () => ctx.alarmBridge.testRing(),
+    checkAppUpdate: () => checkAppUpdateAction(ctx),
+    installAppUpdate: () => installAppUpdateAction(ctx),
+    dismissAppUpdate: () => dismissAppUpdateAction(ctx)
   });
 }
 
@@ -251,6 +267,8 @@ export function createAppStore(options) {
     unbindPower: null,
     client: null,
     alarmBridge: null,
+    updatePlugin: options?.nativeAlarmPlugin ||
+      globalThis?.Capacitor?.Plugins?.PocketAlarm || null,
     sessionEpoch: 0,
     helloCursor: null,
     expectStaleCheck: true,

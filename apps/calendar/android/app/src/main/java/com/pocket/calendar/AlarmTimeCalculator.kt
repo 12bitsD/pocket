@@ -188,12 +188,15 @@ object AlarmTimeCalculator {
             if (!matchesEventRule(rule, anchorDate, candidate)) {
                 continue
             }
-            val triggerMs = ZonedDateTime.of(candidate, startTime, zone)
-                .minusMinutes(offsetMins)
+            val startMs = ZonedDateTime.of(candidate, startTime, zone)
                 .toInstant()
                 .toEpochMilli()
+            val triggerMs = startMs - offsetMins * 60_000L
             if (triggerMs > nowMillis) {
                 return triggerMs
+            }
+            if (offsetMins > 0L && startMs > nowMillis) {
+                return startMs
             }
             if (rule == "none") {
                 return null

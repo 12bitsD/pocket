@@ -11,12 +11,17 @@ import {
   renderMonthView
 } from '../src/ui/agenda-month-view.js';
 import {
+  buildEventDialogHtml,
+  buildTodoDialogHtml
+} from '../src/ui/dialogs.js';
+import {
   handleDialogClick,
   syncEventEndOnStartEdit,
   updateFormDialogDom
 } from '../src/ui/dialog-handlers.js';
 import { toggleSecretInput } from '../src/ui/dom-handlers.js';
 import { handleAppBack } from '../src/ui/mobile-ux.js';
+import { handlePickerClick } from '../src/ui/pickers.js';
 import { renderSettingsView } from '../src/ui/settings-view.js';
 import { renderTodoView } from '../src/ui/todo-view.js';
 import { buildTtyBarHtml } from '../src/ui/underlay.js';
@@ -195,3 +200,54 @@ test('normalizes uppercase mobile @Agent handles and applies duration chips',
     assert.ok(previewEl.innerHTML.includes('13:15..13:45 (自动顺延 +30m)'));
     store.destroy();
   });
+
+function makePickerMockRoot(timeInput, labelEl, slotEl) {
+  return {
+    querySelector: (sel) => {
+      if (sel === '#ev-start') {
+        return timeInput;
+      }
+      if (sel === '[data-picker-label="ev-start"]') {
+        return labelEl;
+      }
+      return sel === '[data-picker-slot="ev-start"]' ? slotEl : null;
+    },
+    querySelectorAll: () => []
+  };
+}
+
+test('uses custom paper time/date pickers with no native OS pickers', () => {
+  const store = createAppStore({
+    clock: () => new Date(2026, 10, 27, 13, 15, 0)
+  });
+  const st = store.getState();
+  const views = [
+    buildEventDialogHtml(st, null),
+    buildTodoDialogHtml(st, null),
+    renderTodoView(st)
+  ];
+  for (const html of views) {
+    assert.equal(html.includes('type="time"'), false);
+    assert.equal(html.includes('type="date"'), false);
+    assert.equal(html.includes('<select'), false);
+  }
+  const timeInput = { value: '13:10' };
+  const labelEl = { textContent: '13:10' };
+  const root = makePickerMockRoot(timeInput, labelEl, {
+    hidden: false,
+    innerHTML: ''
+  });
+  const changes = [];
+  const stepBtn = { dataset: { pickMinStep: '1', pickerTarget: 'ev-start' } };
+  const fakeEvent = {
+    target: { closest: (s) => (s === '[data-pick-min-step]' ? stepBtn : null) }
+  };
+  const handled = handlePickerClick(
+    root, fakeEvent, '2026-11-27', (tid, val) => changes.push([tid, val])
+  );
+  assert.equal(handled, true);
+  assert.equal(timeInput.value, '13:11');
+  assert.equal(labelEl.textContent, '13:11');
+  assert.deepEqual(changes, [['ev-start', '13:11']]);
+  store.destroy();
+});

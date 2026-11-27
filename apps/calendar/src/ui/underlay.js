@@ -3,16 +3,16 @@ import { escapeHtml, toMinutes } from '../domain/date-time.js';
 import { isTodoActive, summarizeTodos } from '../domain/todo-model.js';
 
 export const PAGE_META = Object.freeze({
-  agenda: Object.freeze(['今日日程', '/today', '+ event']),
-  month: Object.freeze(['月历', '/month', '+ event']),
-  todo: Object.freeze(['Todo', '/todo', '+ todo']),
-  settings: Object.freeze(['配置', '/config', ''])
+  agenda: Object.freeze(['今日日程', '/today', '+ 新建']),
+  month: Object.freeze(['月历', '/month', '+ 新建']),
+  todo: Object.freeze(['待办', '/todo', '']),
+  settings: Object.freeze(['设置', '/config', ''])
 });
 
 export const NAV_ITEMS = Object.freeze([
-  Object.freeze(['agenda', '今日日程', 'd']),
+  Object.freeze(['agenda', '今日', 'd']),
   Object.freeze(['month', '月历', 'm']),
-  Object.freeze(['todo', 'Todo', 't'])
+  Object.freeze(['todo', '待办', 't'])
 ]);
 
 const BRAILLE_LEFT = Object.freeze([0x01, 0x02, 0x04, 0x40]);
@@ -22,19 +22,11 @@ export function buildTtyBarHtml(state) {
   const meta = PAGE_META[state.page] || PAGE_META.agenda;
   const slug = meta[1].slice(1);
   const pathHtml = `<b>$</b>pocket/${escapeHtml(slug)}`;
-  const counts = state.todoSummary || summarizeTodos(state.todos);
   const conn = describeConnection(state);
   const qLen = (state.offlineQueue?.mutations?.length || 0) +
     (state.offlineQueue?.receipts?.length || 0);
   const qTag = qLen > 0 ? ` · queue ${qLen}` : '';
-  const suffix = state.page === 'todo'
-    ? ` · @me ${counts.meCount} · @agent ${counts.agentCount}`
-    : ` · today ${state.todayEvents.length}`;
-  const showSuffix = state.mode !== 'cloud' ||
-    state.connectionStatus === 'online';
-  const statText = showSuffix
-    ? `${escapeHtml(conn.label)}${suffix}${qTag}`
-    : `${escapeHtml(conn.label)}${qTag}`;
+  const statText = `${escapeHtml(conn.label)}${qTag}`;
   return {
     pathHtml,
     statHtml: `<i class="dot ${conn.dotClass}"></i>${statText}`

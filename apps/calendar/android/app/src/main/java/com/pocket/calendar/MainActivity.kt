@@ -1,9 +1,15 @@
 package com.pocket.calendar
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.OnBackPressedCallback
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import com.getcapacitor.BridgeActivity
 
 class MainActivity : BridgeActivity() {
@@ -39,24 +45,44 @@ class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(PocketAlarmPlugin::class.java)
         super.onCreate(savedInstanceState)
+        applySystemBars(dark = false)
         onBackPressedDispatcher.addCallback(this, backCallback)
+        requestNotificationPermissionIfNeeded()
     }
 
-    override fun onStart() {
-        super.onStart()
-        bridge?.webView?.resumeTimers()
-    }
-
-    override fun onStop() {
-        if (!isChangingConfigurations) {
-            bridge?.webView?.pauseTimers()
-        }
-        super.onStop()
+    fun applySystemBars(dark: Boolean) {
+        val barColor = getColor(
+            if (dark) R.color.paperCarbon else R.color.paperLight
+        )
+        @Suppress("DEPRECATION")
+        window.statusBarColor = barColor
+        @Suppress("DEPRECATION")
+        window.navigationBarColor = barColor
+        val ctrl = WindowCompat.getInsetsController(window, window.decorView)
+        ctrl.isAppearanceLightStatusBars = !dark
+        ctrl.isAppearanceLightNavigationBars = !dark
     }
 
     override fun onDestroy() {
         uiHandler.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return
+        }
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            ActivityCompat.requestPermissions(
+                this,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                REQ_NOTIF_PERMISSION
+            )
+        }
     }
 
     private fun dispatchSystemBack() {
@@ -66,6 +92,7 @@ class MainActivity : BridgeActivity() {
     }
 
     companion object {
+        private const val REQ_NOTIF_PERMISSION = 4210
         private const val BACK_EVAL_TIMEOUT_MS = 250L
         private const val JS_HANDLE_BACK =
             "(typeof window.__pocketHandleBack==='function'&&" +

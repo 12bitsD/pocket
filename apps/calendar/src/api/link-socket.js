@@ -108,6 +108,10 @@ function handleIncomingFrame(ctx, frame, handshake, makeError) {
     ctx.onSyncFrame?.(frame);
     return;
   }
+  if (frame.type === 'APP_UPDATE') {
+    ctx.onAppUpdate?.(frame.release || null);
+    return;
+  }
   if (frame.type === 'HELLO_ACK') {
     ctx.attempt = 0;
     ctx.ready = true;

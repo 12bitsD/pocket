@@ -11,3 +11,4 @@ class Settings:
     scheduler_enabled: bool = True
     scheduler_interval: float = 1.0
     cors_origins: tuple[str, ...] = ("*",)
+    releases_dir: str = ""

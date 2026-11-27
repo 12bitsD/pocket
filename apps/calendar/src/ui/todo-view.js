@@ -9,37 +9,58 @@ import {
   isTodoRetreated,
   summarizeTodos
 } from '../domain/todo-model.js';
+import { buildAppUpdateBannerHtml } from '../native/update-bridge.js';
+import { buildDateFieldHtml, buildTimeFieldHtml } from './pickers.js';
 
-function buildComposerWhenHtml(composer) {
-  if (composer.target === 'none') {
+function buildQuickDowChips(weeklyDow) {
+  const btns = DOW_LABELS.map((name, idx) => (
+    `<button class="tray-btn" type="button" data-quick-dow="${idx}" ` +
+    `aria-pressed="${idx === Number(weeklyDow)}">${name.slice(-1)}</button>`
+  )).join('');
+  return `<div class="tray-grid cols-7">${btns}</div>`;
+}
+
+export function formatComposerWhenSummary(composer) {
+  let sched = composer.schedule || '今天';
+  if (sched === '每周') {
+    sched = `每${DOW_LABELS[Number(composer.weeklyDow ?? 5)] || '周五'}`;
+  } else if (sched === '指定日期' && composer.date) {
+    sched = composer.date.slice(5);
+  }
+  return `${sched} ${composer.time}`;
+}
+
+function buildComposerWhenPanelHtml(composer) {
+  if (composer.target === 'none' || !composer.whenOpen) {
     return '';
   }
-  const schedOpts = TODO_SCHEDULES.map((label) => {
-    const sel = label === composer.schedule ? 'selected' : '';
-    return `<option value="${label}" ${sel}>${label}</option>`;
-  }).join('');
-  let extraInput = '';
+  const schedPills = TODO_SCHEDULES.map((label) => (
+    `<button class="tray-btn" type="button" ` +
+    `data-quick-schedule="${label}" ` +
+    `aria-pressed="${label === composer.schedule}">${label}</button>`
+  )).join('');
+  let extra = '';
   if (composer.schedule === '指定日期') {
-    extraInput = `<input id="quick-date" type="date" ` +
-      `value="${escapeHtml(composer.date)}" aria-label="指定日期">`;
+    extra = buildDateFieldHtml({
+      id: 'quick-date',
+      name: 'quickDate',
+      value: composer.date,
+      ariaLabel: '指定日期'
+    });
   } else if (composer.schedule === '每周') {
-    const dowOpts = DOW_LABELS.map((name, idx) => {
-      const sel = idx === Number(composer.weeklyDow) ? 'selected' : '';
-      return `<option value="${idx}" ${sel}>${name}</option>`;
-    }).join('');
-    extraInput = `<select id="quick-dow" aria-label="星期">${dowOpts}</select>`;
+    extra = buildQuickDowChips(composer.weeklyDow);
   }
-  const hint = composer.target === '@me'
-    ? '→ 本机准点响铃'
-    : `→ 云端发给 ${escapeHtml(composer.target)}`;
+  const timeField = buildTimeFieldHtml({
+    id: 'quick-time',
+    name: 'quickTime',
+    value: composer.time,
+    ariaLabel: '触发时间',
+    compact: true
+  });
   return `<div class="composer-when">
-    <span>${hint}</span>
-    <div class="date-shortcuts">
-      <select id="quick-schedule" aria-label="触发周期">${schedOpts}</select>
-      ${extraInput}
-      <input id="quick-time" type="time"
-        value="${escapeHtml(composer.time)}" aria-label="触发时间">
-    </div>
+    <div class="tray-grid cols-3">${schedPills}</div>
+    ${extra}
+    ${timeField}
   </div>`;
 }
 
@@ -47,7 +68,7 @@ function buildComposerHtml(state, composer) {
   const activeAgents = state.agentGrants.filter((ag) => ag.active !== false);
   const targets = [
     ['none', '仅待办', ''],
-    ['@me', '@me 响铃', 'me'],
+    ['@me', '@me', 'me'],
     ...activeAgents.map((ag) => [ag.agent_id, ag.agent_id, ''])
   ];
   const pills = targets.map(([id, label, cls]) => (
@@ -55,33 +76,54 @@ function buildComposerHtml(state, composer) {
     `data-quick-target="${escapeHtml(id)}" ` +
     `aria-pressed="${composer.target === id}">${escapeHtml(label)}</button>`
   )).join('');
+  const whenToggle = composer.target === 'none'
+    ? ''
+    : `<button class="when-summary-btn" type="button" ` +
+      `data-toggle-composer-when ` +
+      `aria-expanded="${Boolean(composer.whenOpen)}">` +
+      `<span data-composer-when-text>` +
+      `${escapeHtml(formatComposerWhenSummary(composer))}</span>` +
+      `<i class="when-caret" aria-hidden="true">▾</i></button>`;
   return `<form class="composer-card" id="quick-todo-form">
     <div class="composer-top">
       <input class="composer-input" id="quick-todo-input" enterkeyhint="done"
-        placeholder="写待办，或输入 @me / @agent 16:00…"
+        placeholder="写待办，或输入 @me 07:30…"
         value="${escapeHtml(composer.text)}" autocomplete="off" required>
-      <button class="cmd-primary" type="submit">↵ 添加</button>
+      <button class="cmd-primary" type="submit">添加</button>
     </div>
     <div class="composer-bar">
-      <div class="route-pills">${pills}</div>
+      <div class="chip-strip">${pills}</div>
+      ${whenToggle}
     </div>
-    ${buildComposerWhenHtml(composer)}
+    ${buildComposerWhenPanelHtml(composer)}
   </form>`;
 }
 
-function buildTodoTagsHtml(item) {
-  const tags = [];
-  if (item.locked) {
-    tags.push('<span class="mark-tag lock">LOCKED · 本机锁</span>');
+function buildPermissionAlertHtml(perms) {
+  if (!perms) {
+    return '';
+  }
+  const missing = !perms.exactAlarm || !perms.notifications ||
+    !perms.fullScreenIntent;
+  if (!missing) {
+    return '';
+  }
+  return `<div class="perm-alert-bar" role="status">
+    <span>闹钟权限未就绪，可能无法准点响铃</span>
+    <button class="cmd-quiet outlined mini" type="button"
+      data-open-settings>去开启 →</button>
+  </div>`;
+}
+
+function buildPrimaryTimeTagHtml(item) {
+  if (item.assignee === 'none' || !item.time_hhmm) {
+    return '';
   }
   const hhmm = escapeHtml(item.time_hhmm);
-  if (item.assignee === '@me') {
-    tags.push(`<span class="mark-tag lock">@me · ${hhmm} 响铃</span>`);
-  } else if (item.assignee !== 'none') {
-    const who = escapeHtml(item.assignee);
-    tags.push(`<span class="mark-tag neutral">${who} · ${hhmm}</span>`);
-  }
-  return tags.join(' ');
+  const cls = item.assignee === '@me'
+    ? 'todo-time-stamp me'
+    : 'todo-time-stamp';
+  return `<span class="${cls}">${hhmm}</span>`;
 }
 
 function buildTodoLeftControl(item, lockedBlocked) {
@@ -120,9 +162,18 @@ function buildInlineTriggerFoot(item, state, lockedBlocked) {
 function buildTodoRowHtml(item, state) {
   const lockedBlocked = Boolean(item.locked) && !isLocalSessionState(state);
   const desc = describeTodoStatus(item, state.todayIso);
+  const rawSub = item.locked
+    ? desc.subtitle.replace(/\s*·\s*LOCKED 本机锁/g, '')
+    : desc.subtitle;
+  const cleanSub = isAgentAssignee(item.assignee)
+    ? `${item.assignee} · ${rawSub}`
+    : rawSub;
   const dotHtml = item.assignee === 'none'
     ? ''
     : `<i class="dot ${desc.dotClass}"></i> `;
+  const lockTag = item.locked
+    ? '<span class="mark-tag lock">LOCKED · 本机锁</span>'
+    : '';
   const receiptHtml = item.result_summary
     ? `<div class="todo-receipt">↳ ${escapeHtml(item.result_summary)}</div>`
     : '';
@@ -133,9 +184,12 @@ function buildTodoRowHtml(item, state) {
       <button class="todo-body-btn" type="button" data-edit-todo="${id}">
         <div class="todo-head">
           <span class="todo-title">${escapeHtml(item.text)}</span>
-          <span class="inline-actions">${buildTodoTagsHtml(item)}</span>
+          ${buildPrimaryTimeTagHtml(item)}
         </div>
-        <span class="todo-sub">${dotHtml}${escapeHtml(desc.subtitle)}</span>
+        <div class="todo-meta-row">
+          <span class="todo-sub">${dotHtml}${escapeHtml(cleanSub)}</span>
+          ${lockTag}
+        </div>
         ${receiptHtml}
       </button>
       ${buildInlineTriggerFoot(item, state, lockedBlocked)}
@@ -153,7 +207,7 @@ function buildGroupedTodoRows(todos, state) {
   const retHtml = retreated
     .map((item) => buildTodoRowHtml(item, state))
     .join('');
-  const divLabel = `RETREATED · 已完成或暂停 (${retreated.length})`;
+  const divLabel = `已完成或暂停 (${retreated.length})`;
   const divider = active.length > 0
     ? `<div class="sub-divider">${divLabel}</div>`
     : '';
@@ -164,23 +218,24 @@ export function renderTodoView(state, composerState) {
   const composer = composerState || {
     target: '@me',
     time: '07:30',
-    schedule: '工作日',
+    schedule: '今天',
     date: state.todayIso,
     weeklyDow: 5,
     text: ''
   };
   const emptyHtml = '<div class="empty">暂无待办或唤醒任务<br>' +
     '<span class="row-meta">' +
-    '在上方输入事项，支持敲 @me 07:30 或 明天 / 工作日</span></div>';
+    '在上方输入事项，支持 @me 07:30 或 明天 / 工作日</span></div>';
   const summary = state.todoSummary || summarizeTodos(state.todos);
   const listSection = state.todos.length > 0
     ? buildGroupedTodoRows(state.todos, state)
     : emptyHtml;
   return `<div class="foreground-stack">
+    ${buildAppUpdateBannerHtml(state)}
     ${buildComposerHtml(state, composer)}
+    ${buildPermissionAlertHtml(state.nativePermissions)}
     <div class="col-head">
-      <span>OPEN ${summary.openCount} · CYCLES ${summary.cycleCount}</span>
-      <span>ASSIGNEE / ROUTE</span>
+      <span>待办 ${summary.openCount} · 循环 ${summary.cycleCount}</span>
     </div>
     ${listSection}
   </div>`;

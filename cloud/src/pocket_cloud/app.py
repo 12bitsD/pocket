@@ -4,9 +4,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 import httpx
 
+from .app_releases import (
+    APK_MIME,
+    APK_PREFIX,
+    APK_SUFFIX,
+    require_bearer_auth,
+    resolve_local_apk,
+    scan_local_latest,
+    store_uploaded_apk,
+)
 from .auth import sync_bootstrap
 from .config import Settings
 from .context import AppContext
@@ -60,6 +69,41 @@ def build_lifespan(settings: Settings):
     return lifespan
 
 
+def register_app_release_routes(app: FastAPI) -> None:
+    @app.get("/v1/app/latest")
+    async def app_latest(request: Request):
+        ctx = app.state.ctx
+        await require_bearer_auth(ctx, request.headers.get("authorization"))
+        return dict(data=scan_local_latest(ctx.settings.releases_dir))
+
+    @app.get("/v1/app/download/{version}")
+    async def app_download(version: str, request: Request):
+        ctx = app.state.ctx
+        await require_bearer_auth(ctx, request.headers.get("authorization"))
+        apk_path, hex_hash = resolve_local_apk(
+            ctx.settings.releases_dir, version
+        )
+        return FileResponse(
+            path=apk_path,
+            media_type=APK_MIME,
+            filename=f"{APK_PREFIX}{version}{APK_SUFFIX}",
+            headers={"X-Pocket-Sha256": hex_hash},
+        )
+
+    @app.post("/v1/app/releases")
+    async def app_upload(request: Request, version: str, notes: str = ""):
+        ctx = app.state.ctx
+        await require_bearer_auth(
+            ctx, request.headers.get("authorization"), require_admin=True
+        )
+        raw_bytes = await request.body()
+        meta = store_uploaded_apk(
+            ctx.settings.releases_dir, version, raw_bytes, notes
+        )
+        ctx.hub.publish_many([dict(type="APP_UPDATE", release=meta)])
+        return dict(data=meta)
+
+
 def create_app(settings: Settings) -> FastAPI:
     app = FastAPI(title="Pocket Cloud", lifespan=build_lifespan(settings))
     app.state.settings = settings
@@ -80,6 +124,8 @@ def create_app(settings: Settings) -> FastAPI:
     @app.get("/healthz")
     async def health():
         return dict(status="ok")
+
+    register_app_release_routes(app)
 
     @app.post("/v1/rpc/{method}")
     async def rpc(method: str, request: Request):

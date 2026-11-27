@@ -162,7 +162,10 @@ class RingingActivity : Activity() {
             68f,
             R.color.paperInk,
             LocalTime.now().format(HH_MM_FMT)
-        ).apply { letterSpacing = -0.04f }
+        ).apply {
+            typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+            letterSpacing = -0.04f
+        }
         root.addView(ttyHeader, linearParams(WRAP, WRAP, 16))
         root.addView(stampBadge, linearParams(WRAP, WRAP, 18))
         root.addView(clockView, linearParams(MATCH, WRAP, 18))
@@ -200,8 +203,8 @@ class RingingActivity : Activity() {
         )
         val snoozeStyle = ButtonStyle(
             textColorRes = R.color.paperInk,
-            textSizeSp = 14f,
-            face = Typeface.MONOSPACE,
+            textSizeSp = 15f,
+            face = Typeface.create("sans-serif-medium", Typeface.NORMAL),
             bg = roundedRectDrawable(R.color.cardDark, R.color.paperRule)
         )
         val dismissBtn = buildActionButton(
@@ -224,7 +227,7 @@ class RingingActivity : Activity() {
     ): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(3).toFloat()
+            cornerRadius = dp(8).toFloat()
             setColor(getColor(fillRes))
             if (strokeColor != null) {
                 setStroke(dp(1), getColor(strokeColor))
@@ -252,7 +255,7 @@ class RingingActivity : Activity() {
     private fun buildVermilionStampBackground(): LayerDrawable {
         val wash = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(2).toFloat()
+            cornerRadius = dp(4).toFloat()
             setColor(COLOR_VERMILION_WASH)
         }
         val leftBar = GradientDrawable().apply {

@@ -172,6 +172,65 @@ function bindMonthSwipeGesture(ui, content, onMonthDelta) {
   }, { passive: true });
 }
 
+function resetDialogDrag(dialog, springBack) {
+  if (!dialog.style) {
+    return;
+  }
+  if (!springBack) {
+    dialog.style.transition = '';
+    dialog.style.transform = '';
+    return;
+  }
+  dialog.style.transition = 'transform 200ms var(--ease)';
+  dialog.style.transform = 'translateY(0)';
+  setTimeout(() => {
+    dialog.style.transition = '';
+    dialog.style.transform = '';
+  }, 210);
+}
+
+function createDialogDragController(dialog) {
+  let drag = null;
+  const onStart = (ev) => {
+    const t = ev.touches?.[0];
+    const inHead = Boolean(ev.target?.closest?.('.dialog-head'));
+    drag = t && inHead ? { x: t.clientX, y: t.clientY, moved: false } : null;
+    if (drag && dialog.style) {
+      dialog.style.transition = 'none';
+    }
+  };
+  const onMove = (ev) => {
+    const t = ev.touches?.[0];
+    if (!drag || !t) {
+      return;
+    }
+    const dy = t.clientY - drag.y;
+    if (dy > 6 && dy > Math.abs(t.clientX - drag.x)) {
+      drag.moved = true;
+      if (dialog.style) {
+        dialog.style.transform = `translateY(${Math.min(dy, 240)}px)`;
+      }
+    }
+  };
+  const onEnd = (ev) => {
+    const t = ev.changedTouches?.[0];
+    const cur = drag;
+    drag = null;
+    if (!cur || !t) {
+      resetDialogDrag(dialog, Boolean(cur?.moved));
+      return;
+    }
+    const dy = t.clientY - cur.y;
+    if (dy >= SWIPE_MIN_PX && dy > Math.abs(t.clientX - cur.x) * SWIPE_RATIO) {
+      resetDialogDrag(dialog, false);
+      dialog.close?.();
+      return;
+    }
+    resetDialogDrag(dialog, cur.moved);
+  };
+  return { onStart, onMove, onEnd };
+}
+
 function bindDialogBackdropAndSwipe(doc) {
   const dialog = doc.querySelector('#form-dialog');
   if (!dialog) {
@@ -182,25 +241,11 @@ function bindDialogBackdropAndSwipe(doc) {
       dialog.close?.();
     }
   });
-  let headY = null;
-  dialog.addEventListener('touchstart', (ev) => {
-    const touch = ev.touches?.[0];
-    const inHead = Boolean(ev.target?.closest?.('.dialog-head'));
-    headY = touch && inHead ? { x: touch.clientX, y: touch.clientY } : null;
-  }, { passive: true });
-  dialog.addEventListener('touchend', (ev) => {
-    const touch = ev.changedTouches?.[0];
-    if (!headY || !touch) {
-      headY = null;
-      return;
-    }
-    const dx = touch.clientX - headY.x;
-    const dy = touch.clientY - headY.y;
-    headY = null;
-    if (dy >= SWIPE_MIN_PX && dy > Math.abs(dx) * SWIPE_RATIO) {
-      dialog.close?.();
-    }
-  }, { passive: true });
+  const ctl = createDialogDragController(dialog);
+  dialog.addEventListener('touchstart', ctl.onStart, { passive: true });
+  dialog.addEventListener('touchmove', ctl.onMove, { passive: true });
+  dialog.addEventListener('touchend', ctl.onEnd, { passive: true });
+  dialog.addEventListener('touchcancel', ctl.onEnd, { passive: true });
 }
 
 function scheduleNextMinuteTick(ctrl) {

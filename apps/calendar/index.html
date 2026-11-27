@@ -20,18 +20,15 @@
 
     <header class="topbar">
       <div class="title-group">
-        <button class="cmd-quiet outlined" id="back-button" type="button"
-          aria-label="返回" hidden>← back</button>
+        <button class="cmd-quiet" id="back-button" type="button"
+          aria-label="返回" hidden>← 返回</button>
         <h1 id="page-title" tabindex="-1">今日日程</h1>
-        <span class="header-sub" id="page-sub">/today</span>
       </div>
       <div class="top-actions">
-        <button class="cmd-quiet" id="theme-toggle" type="button"
-          aria-label="切换深浅纸面">b/w</button>
-        <button class="cmd-quiet outlined" id="settings-button"
-          type="button">cfg</button>
+        <button class="cmd-quiet" id="settings-button"
+          type="button">设置</button>
         <button class="cmd-primary" id="create-button"
-          type="button">+ event</button>
+          type="button">+ 新建</button>
       </div>
     </header>
 
@@ -43,8 +40,8 @@
   <dialog id="form-dialog" closedby="any" aria-labelledby="dialog-title">
     <div class="dialog-head">
       <h2 id="dialog-title">新建</h2>
-      <button class="cmd-quiet" id="dialog-close" type="button"
-        aria-label="关闭">[esc]</button>
+      <button class="dialog-close-btn" id="dialog-close" type="button"
+        aria-label="关闭">✕</button>
     </div>
     <form class="dialog-body" id="active-form" method="dialog"></form>
   </dialog>

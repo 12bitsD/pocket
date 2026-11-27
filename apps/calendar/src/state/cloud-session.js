@@ -216,6 +216,8 @@ export function disconnectCloudSession(ctx) {
     lastSeq: 0,
     activePairing: null,
     lastMintedToken: null,
+    appUpdate: null,
+    appUpdateDismissed: false,
     offlineQueue: EMPTY_OFFLINE_QUEUE,
     ...demo
   };

@@ -3,6 +3,7 @@ package com.pocket.calendar
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.core.content.ContextCompat
 
 class AlarmReceiver : BroadcastReceiver() {
@@ -25,6 +26,31 @@ class AlarmReceiver : BroadcastReceiver() {
             record.alarmKey,
             record
         )
-        ContextCompat.startForegroundService(context, svcIntent)
+        try {
+            ContextCompat.startForegroundService(context, svcIntent)
+        } catch (err: Exception) {
+            Log.e(TAG, "Foreground service start failed, using fallback", err)
+            launchFallbackActivity(context, record)
+        }
+    }
+
+    private fun launchFallbackActivity(context: Context, record: AlarmRecord) {
+        try {
+            val actIntent = Intent(context, RingingActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(ExactAlarmScheduler.EXTRA_ALARM_KEY, record.alarmKey)
+                putExtra(AlarmRingingService.EXTRA_TITLE, record.title)
+                putExtra(AlarmRingingService.EXTRA_SUBTITLE, record.subtitle)
+            }
+            context.startActivity(actIntent)
+        } catch (err: Exception) {
+            Log.e(TAG, "Fallback RingingActivity launch failed", err)
+        }
+    }
+
+    companion object {
+        private const val TAG = "PocketAlarmRcv"
     }
 }

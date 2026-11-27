@@ -1,5 +1,10 @@
-import { REPEAT_LABELS, formatRepeatLabel } from '../domain/calendar-model.js';
-import { addDaysIso, DOW_LABELS, escapeHtml } from '../domain/date-time.js';
+import { formatRepeatLabel } from '../domain/calendar-model.js';
+import {
+  addDaysIso,
+  DOW_LABELS,
+  escapeHtml,
+  toMinutes
+} from '../domain/date-time.js';
 import {
   TODO_SCHEDULES,
   isAgentAssignee,
@@ -7,11 +12,12 @@ import {
   isRecurringTodo,
   todoScheduleUiValue
 } from '../domain/todo-model.js';
+import { buildDateFieldHtml, buildTimeFieldHtml } from './pickers.js';
 
 const REMINDER_ITEMS = Object.freeze([
   Object.freeze(['none', '不提醒']),
-  Object.freeze(['notify', '普通通知 (-10m)']),
-  Object.freeze(['alarm', '强提醒响铃 (-15m)'])
+  Object.freeze(['notify', '通知']),
+  Object.freeze(['alarm', '响铃'])
 ]);
 
 function buildRadioChoicesHtml(name, pairs, currentVal, extraAttr) {
@@ -50,40 +56,43 @@ function resolveEventDefaults(state, existing) {
   };
 }
 
-function buildEventDateAndTimeFields(vals) {
+function buildEventDateAndTimeFields(vals, todayIso) {
+  const dateField = buildDateFieldHtml({
+    id: 'ev-date', name: 'date', value: vals.date, ariaLabel: '日程日期'
+  });
+  const startField = buildTimeFieldHtml({
+    id: 'ev-start', name: 'start', value: vals.start,
+    ariaLabel: '开始时间', compact: true
+  });
+  const endField = buildTimeFieldHtml({
+    id: 'ev-end', name: 'end', value: vals.end,
+    ariaLabel: '结束时间', compact: true
+  });
+  const dur = toMinutes(vals.end) - toMinutes(vals.start);
+  const dayBtns = [['0', '今天'], ['1', '明天'], ['2', '后天']].map(([o, l]) => {
+    const active = vals.date === addDaysIso(todayIso, Number(o));
+    return `<button class="ghost-chip" type="button" ` +
+      `aria-pressed="${active}" data-date-offset="${o}">${l}</button>`;
+  }).join('');
+  const durBtns = [['30', '30m'], ['60', '1h'], ['120', '2h']].map(([m, l]) => {
+    const active = dur === Number(m);
+    return `<button class="ghost-chip" type="button" ` +
+      `aria-pressed="${active}" data-dur-mins="${m}">${l}</button>`;
+  }).join('');
   return `<div class="field">
-      <label for="ev-date">DATE</label>
-      <div class="date-row">
-        <input class="date-input" id="ev-date" name="date" type="date"
-          value="${escapeHtml(vals.date)}" required>
-        <div class="date-shortcuts">
-          <button class="cmd-quiet outlined mini" type="button"
-            data-date-offset="0">今天</button>
-          <button class="cmd-quiet outlined mini" type="button"
-            data-date-offset="1">明天</button>
-          <button class="cmd-quiet outlined mini" type="button"
-            data-date-offset="2">后天</button>
-        </div>
+      <div class="field-head">
+        <label>日期</label>
+        <div class="ghost-row">${dayBtns}</div>
       </div>
+      ${dateField}
     </div>
     <div class="field">
       <div class="field-head">
-        <label for="ev-start">TIME WINDOW</label>
-        <div class="date-shortcuts">
-          <button class="cmd-quiet outlined mini" type="button"
-            data-dur-mins="30">30m</button>
-          <button class="cmd-quiet outlined mini" type="button"
-            data-dur-mins="60">1h</button>
-          <button class="cmd-quiet outlined mini" type="button"
-            data-dur-mins="120">2h</button>
-        </div>
+        <label>时间</label>
+        <div class="ghost-row">${durBtns}</div>
       </div>
       <div class="time-range-row">
-        <input class="time-compact" id="ev-start" name="start" type="time"
-          aria-label="开始时间" value="${escapeHtml(vals.start)}" required>
-        <span class="range-sep">→</span>
-        <input class="time-compact" id="ev-end" name="end" type="time"
-          aria-label="结束时间" value="${escapeHtml(vals.end)}" required>
+        ${startField}<span class="range-sep">→</span>${endField}
       </div>
     </div>`;
 }
@@ -93,67 +102,55 @@ export function buildEventDialogHtml(state, editId) {
     ? state.masterEvents.find((e) => e.event_id === String(editId))
     : null;
   const vals = resolveEventDefaults(state, existing);
-  const repeatPairs = Object.values(REPEAT_LABELS).map((r) => [r, r]);
-  const repeatHtml = buildRadioChoicesHtml(
-    'repeat', repeatPairs, vals.repeat, ''
-  );
   const remHtml = buildRadioChoicesHtml(
     'reminder', REMINDER_ITEMS, vals.rem, ''
   );
   const delBtn = existing
-    ? '<button class="btn-block" type="button" ' +
-      'id="delete-event">删除日程</button>'
+    ? '<div class="dialog-sub-actions">' +
+      '<button class="text-danger-btn" type="button" ' +
+      'id="delete-event">删除日程</button></div>'
     : '';
   return `
-    ${buildEventDateAndTimeFields(vals)}
     <div class="field">
-      <label for="ev-title">TITLE</label>
-      <input id="ev-title" name="title" placeholder="例如：评审会议 / 高铁检票"
-        enterkeyhint="done" value="${escapeHtml(vals.title)}" required>
+      <input class="title-field-input" id="ev-title" name="title"
+        placeholder="日程名称…" enterkeyhint="done"
+        value="${escapeHtml(vals.title)}" required>
     </div>
-    <div class="field">
-      <label for="ev-loc">LOCATION / NOTE</label>
-      <input id="ev-loc" name="location" placeholder="可选地点或说明"
-        enterkeyhint="done" value="${escapeHtml(vals.loc)}">
-    </div>
-    <fieldset><legend>REPEAT</legend>
-      <div class="choices">${repeatHtml}</div></fieldset>
-    <fieldset><legend>REMINDER POLICY</legend>
-      <div class="choices">${remHtml}</div></fieldset>
-    <div class="cli-preview" id="cli-preview" aria-live="polite"></div>
-    <button class="btn-block primary" type="submit">保存日程</button>
+    ${buildEventDateAndTimeFields(vals, state.todayIso)}
+    <fieldset><legend>提醒</legend>
+      <div class="seg-choices cols-3">${remHtml}</div></fieldset>
+    <button class="btn-block primary" type="submit">保存</button>
     ${delBtn}`;
 }
 
 function buildTodoActionButtons(existing, state, lockedBlocked) {
   const disAttr = lockedBlocked ? 'disabled' : '';
-  const buttons = [
-    `<button class="btn-block primary" type="submit" ${disAttr}>保存</button>`
-  ];
-  const canTrig = Boolean(
-    existing && isAgentAssignee(existing.assignee) && state.mode === 'cloud'
-  );
-  if (canTrig) {
+  const primary = `<button class="btn-block primary" type="submit" ` +
+    `${disAttr}>保存</button>`;
+  if (!existing) {
+    return primary;
+  }
+  const secondary = [];
+  if (isAgentAssignee(existing.assignee) && state.mode === 'cloud') {
     const id = escapeHtml(existing.todo_id);
-    buttons.push(
-      `<button class="btn-block" type="button" id="trigger-todo" ${disAttr} ` +
-      `data-trigger-todo="${id}">立即触发 Agent 执行</button>`
+    secondary.push(
+      `<button class="ghost-chip" type="button" id="trigger-todo" ${disAttr} ` +
+      `data-trigger-todo="${id}">立即触发</button>`
     );
   }
-  if (existing && isRecurringTodo(existing) && existing.enabled) {
-    const label = existing.skip_next ? '恢复下次触发' : '跳过下一次';
-    buttons.push(
-      `<button class="btn-block" type="button" id="skip-next-todo" ` +
+  if (isRecurringTodo(existing) && existing.enabled) {
+    const label = existing.skip_next ? '恢复下次' : '跳过下次';
+    secondary.push(
+      `<button class="ghost-chip" type="button" id="skip-next-todo" ` +
       `${disAttr}>${label}</button>`
     );
   }
-  if (existing) {
-    buttons.push(
-      `<button class="btn-block" type="button" id="delete-todo" ` +
-      `${disAttr}>删除</button>`
-    );
-  }
-  return buttons.join('\n');
+  secondary.push(
+    `<button class="text-danger-btn" type="button" id="delete-todo" ` +
+    `${disAttr}>删除</button>`
+  );
+  const subHtml = secondary.join('');
+  return `${primary}<div class="dialog-sub-actions">${subHtml}</div>`;
 }
 
 function buildTodoTargets(state, targetVal) {
@@ -161,9 +158,9 @@ function buildTodoTargets(state, targetVal) {
     (ag) => ag.active !== false || ag.agent_id === targetVal
   );
   return [
-    ['none', '仅待办 (不定时)'],
-    ['@me', '@me 手机响铃'],
-    ...activeAgents.map((ag) => [ag.agent_id, `${ag.agent_id} 自动执行`])
+    ['none', '仅待办'],
+    ['@me', '本机响铃'],
+    ...activeAgents.map((ag) => [ag.agent_id, ag.agent_id])
   ];
 }
 
@@ -181,48 +178,51 @@ function prepareTodoDialogSpec(state, editId) {
   const lockedBlocked = Boolean(existing?.locked) && !isLocal;
   const targetVal = existing ? existing.assignee : '@me';
   const dowVal = existing?.weekly_dow ?? 5;
+  const dowPairs = DOW_LABELS.map((name, idx) => [String(idx), name]);
   return {
     existing,
     lockedBlocked,
     disAttr: lockedBlocked ? 'disabled' : '',
     lockAttrs: formatLockAttrs(Boolean(existing?.locked), isLocal),
     textVal: escapeHtml(existing?.text || ''),
-    timeVal: escapeHtml(existing?.time_hhmm || '07:30'),
-    dateVal: escapeHtml(existing?.once_date || addDaysIso(state.todayIso, 1)),
+    timeVal: existing?.time_hhmm || '07:30',
+    dateVal: existing?.once_date || addDaysIso(state.todayIso, 1),
     targetVal,
-    schedVal: todoScheduleUiValue(existing, state.todayIso),
-    dowHtml: DOW_LABELS.map((name, idx) => (
-      `<option value="${idx}" ${idx === dowVal ? 'selected' : ''}>` +
-      `每${name}</option>`
-    )).join('')
+    schedVal: existing ? todoScheduleUiValue(existing, state.todayIso) : '今天',
+    dowHtml: buildRadioChoicesHtml(
+      'weekly_dow', dowPairs, String(dowVal), lockedBlocked ? 'disabled' : ''
+    )
   };
 }
 
 function buildTodoTimingFields(spec, schedHtml) {
+  const timeField = buildTimeFieldHtml({
+    id: 'td-time', name: 'time', value: spec.timeVal,
+    ariaLabel: '触发时间', disabled: spec.lockedBlocked
+  });
+  const dateField = buildDateFieldHtml({
+    id: 'td-date', name: 'date', value: spec.dateVal,
+    ariaLabel: '指定日期', disabled: spec.lockedBlocked
+  });
   return `<div class="field" data-todo-when>
-      <label for="td-time">WHEN · 触发时间与周期</label>
-      <input class="time-input" id="td-time" name="time" type="time"
-        ${spec.disAttr} value="${spec.timeVal}">
-      <div class="choices" style="margin-top:6px">${schedHtml}</div>
+      <label>时间与频率</label>
+      ${timeField}
+      <div class="seg-choices cols-3 todo-sched-grid">${schedHtml}</div>
     </div>
     <div class="field" data-todo-date>
-      <label for="td-date">DATE · 指定触发日期</label>
-      <div class="date-row">
-        <input class="date-input" id="td-date" name="date" type="date"
-          ${spec.disAttr} value="${spec.dateVal}">
-        <div class="date-shortcuts">
-          <button class="cmd-quiet outlined mini" type="button" ${spec.disAttr}
+      <div class="field-head">
+        <label>指定日期</label>
+        <div class="ghost-row">
+          <button class="ghost-chip" type="button" ${spec.disAttr}
             data-todo-date-offset="1">明天</button>
-          <button class="cmd-quiet outlined mini" type="button" ${spec.disAttr}
+          <button class="ghost-chip" type="button" ${spec.disAttr}
             data-todo-date-offset="2">后天</button>
         </div>
       </div>
+      ${dateField}
     </div>
-    <div class="field" data-todo-dow>
-      <label for="td-dow">WEEKDAY · 每周触发日</label>
-      <select id="td-dow" name="weekly_dow"
-        ${spec.disAttr}>${spec.dowHtml}</select>
-    </div>`;
+    <fieldset data-todo-dow><legend>每周触发日</legend>
+      <div class="choices">${spec.dowHtml}</div></fieldset>`;
 }
 
 export function buildTodoDialogHtml(state, editId) {
@@ -241,20 +241,19 @@ export function buildTodoDialogHtml(state, editId) {
   return `
     ${lockNotice}
     <div class="field">
-      <label for="td-text">TODO / PROMPT (选 @agent 时直接作为发送正文)</label>
-      <textarea class="prompt-input" id="td-text" name="text" ${spec.disAttr}
+      <textarea class="title-field-input todo-title-input" id="td-text"
+        name="text" rows="2" ${spec.disAttr}
         placeholder="要做的事…" required>${spec.textVal}</textarea>
     </div>
-    <fieldset><legend>ASSIGNEE · 到点唤醒谁</legend>
-      <div class="choices">${targetHtml}</div></fieldset>
+    <fieldset><legend>方式</legend>
+      <div class="chip-strip choice-strip">${targetHtml}</div></fieldset>
     ${buildTodoTimingFields(spec, schedHtml)}
     <div class="field" data-todo-lock>
-      <label class="choice">
+      <label class="lock-toggle-row">
+        <span>本机锁 <em>仅手机本机可改</em></span>
         <input type="checkbox" id="td-locked" name="locked" ${spec.lockAttrs}>
-        <span>LOCKED 本机锁（仅手机本机可开启或修改）</span>
       </label>
     </div>
-    <div class="cli-preview" id="cli-preview" aria-live="polite"></div>
     ${buildTodoActionButtons(spec.existing, state, spec.lockedBlocked)}`;
 }
 
@@ -270,24 +269,24 @@ export function buildAgentDialogHtml(state, editAgentId) {
   const agUrl = escapeHtml(existing?.endpoint_url || '');
   return `
     <div class="field">
-      <label for="ag-id">AGENT HANDLE (@开头，小写字母/数字/-/_)</label>
+      <label for="ag-id">Agent 标识（@开头）</label>
       <input id="ag-id" name="agentId" placeholder="@work-agent"
         autocapitalize="off" spellcheck="false" autocomplete="off"
         value="${agId}" ${idAttr} required>
     </div>
     <div class="field">
-      <label for="ag-name">DISPLAY NAME</label>
+      <label for="ag-name">名称</label>
       <input id="ag-name" name="name" placeholder="主力工作 Agent"
         value="${agName}" required>
     </div>
     <div class="field">
-      <label for="ag-url">WEBHOOK ENDPOINT URL (自动拼接 /webhooks/pocket)</label>
+      <label for="ag-url">Webhook 地址</label>
       <input id="ag-url" name="endpointUrl" type="url" inputmode="url"
         autocapitalize="off" spellcheck="false"
         placeholder="https://agent.example.com" value="${agUrl}" required>
     </div>
     <div class="field">
-      <label for="ag-key">CREDENTIAL SECRET</label>
+      <label for="ag-key">调用密钥</label>
       <div class="secret-row">
         <input id="ag-key" name="credential" type="password"
           autocapitalize="off" spellcheck="false" autocomplete="off"
@@ -296,6 +295,5 @@ export function buildAgentDialogHtml(state, editAgentId) {
           data-toggle-secret="ag-key">显示</button>
       </div>
     </div>
-    <div class="cli-preview" id="cli-preview" aria-live="polite"></div>
-    <button class="btn-block primary" type="submit">保存 Agent 配置</button>`;
+    <button class="btn-block primary" type="submit">保存</button>`;
 }

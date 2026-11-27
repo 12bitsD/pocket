@@ -1,6 +1,13 @@
+import '@fontsource/ibm-plex-mono/latin-300.css';
+import '@fontsource/ibm-plex-mono/latin-400.css';
+import '@fontsource/ibm-plex-mono/latin-500.css';
+import '@fontsource/ibm-plex-mono/latin-600.css';
+import '@fontsource/ibm-plex-sans/latin-400.css';
+import '@fontsource/ibm-plex-sans/latin-500.css';
+import '@fontsource/ibm-plex-sans/latin-600.css';
 import '../../../packages/design-system/terminal.css';
 
-import { addDaysIso } from './domain/date-time.js';
+import { addDaysIso, pad2 } from './domain/date-time.js';
 import { createAppStore } from './state/app-store.js';
 import { parseUrlBootstrap } from './state/sync-reducer.js';
 import {
@@ -66,12 +73,17 @@ function renderActivePageHtml(state, ui) {
 }
 
 function syncShellChrome(ui, state) {
-  const [title, sub, cta] = PAGE_META[state.page] || PAGE_META.agenda;
+  const [title, , cta] = PAGE_META[state.page] || PAGE_META.agenda;
   ui.doc.body.dataset.theme = state.theme;
-  const themeMeta = ui.doc.querySelector('#theme-color-meta');
-  if (themeMeta) {
-    const hex = state.theme === 'black' ? '#171614' : '#f6f2e9';
-    themeMeta.setAttribute('content', hex);
+  if (ui.chromeCache.theme !== state.theme) {
+    ui.chromeCache.theme = state.theme;
+    const themeMeta = ui.doc.querySelector('#theme-color-meta');
+    if (themeMeta) {
+      const hex = state.theme === 'black' ? '#171614' : '#f6f2e9';
+      themeMeta.setAttribute('content', hex);
+    }
+    const native = globalThis?.Capacitor?.Plugins?.PocketAlarm;
+    native?.setSystemTheme?.({ theme: state.theme }).catch?.(() => {});
   }
   if (state.motionOff) {
     ui.doc.body.dataset.motion = 'off';
@@ -79,7 +91,6 @@ function syncShellChrome(ui, state) {
     delete ui.doc.body.dataset.motion;
   }
   ui.doc.querySelector('#page-title').textContent = title;
-  ui.doc.querySelector('#page-sub').textContent = sub;
   const tty = buildTtyBarHtml(state);
   if (ui.chromeCache.path !== tty.pathHtml) {
     ui.chromeCache.path = tty.pathHtml;
@@ -182,10 +193,6 @@ function bindTopChromeListeners(ui) {
   doc.querySelector('#back-button').addEventListener('click', () => {
     navigateToPage(ui, store.getState().lastMainPage);
   });
-  doc.querySelector('#theme-toggle').addEventListener('click', () => {
-    const next = store.getState().theme === 'black' ? 'white' : 'black';
-    store.setTheme(next);
-  });
   doc.querySelector('#create-button').addEventListener('click', () => {
     const kind = store.getState().page === 'todo' ? 'todo' : 'event';
     openModalByKind(ui, kind, null);
@@ -224,7 +231,8 @@ function bindGlobalShortcuts(ui) {
     }
     if (key === 'b') {
       event.preventDefault();
-      ui.doc.querySelector('#theme-toggle').click();
+      const next = ui.store.getState().theme === 'black' ? 'white' : 'black';
+      ui.store.setTheme(next);
     }
   });
 }
@@ -270,6 +278,13 @@ function bindPaneAndFormEvents(ui) {
   });
 }
 
+function nextDefaultAlarmHhmm() {
+  const now = new Date();
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const next = (Math.ceil((mins + 5) / 10) * 10) % 1440;
+  return `${pad2(Math.floor(next / 60))}:${pad2(next % 60)}`;
+}
+
 export function createCalendarApp(doc, store) {
   const initState = store.getState();
   const preferClaim = Boolean(initState.isNativeAndroid) ||
@@ -285,18 +300,21 @@ export function createCalendarApp(doc, store) {
     prefs: { authTab: preferClaim ? 'claim' : 'login' },
     composer: {
       target: '@me',
-      time: '07:30',
-      schedule: '工作日',
+      time: nextDefaultAlarmHhmm(),
+      schedule: '今天',
       date: addDaysIso(initState.todayIso, 1),
       weeklyDow: 5,
+      whenOpen: false,
       text: ''
     },
     render: null,
     openModal: null,
+    navigate: null,
     destroy: null
   };
   ui.render = () => renderContentPane(ui, '');
   ui.openModal = (kind, id) => openModalByKind(ui, kind, id);
+  ui.navigate = (page) => navigateToPage(ui, page);
   const unsubStore = store.subscribe(() => renderContentPane(ui, ''));
   bindTopChromeListeners(ui);
   bindPaneAndFormEvents(ui);

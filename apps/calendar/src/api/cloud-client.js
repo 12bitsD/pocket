@@ -100,12 +100,33 @@ async function executeRpc(ctx, method, params, callOpts) {
   return payload?.data;
 }
 
+async function executeGetLatestApp(ctx) {
+  const session = ctx.getSession();
+  const baseUrl = normalizeBaseUrl(session.baseUrl);
+  const headers = {};
+  if (session.token) {
+    headers.Authorization = `Bearer ${session.token}`;
+  }
+  const res = await ctx.fetchImpl(`${baseUrl}/v1/app/latest`, {
+    method: 'GET',
+    headers
+  });
+  const payload = await parseJsonSafe(res);
+  if (!res.ok) {
+    const code = payload?.error?.code || 'HTTP_ERROR';
+    const message = payload?.error?.message || `HTTP ${res.status}`;
+    throw new CloudRpcError(res.status, code, message);
+  }
+  return payload?.data || null;
+}
+
 export function createCloudClient(options) {
   const ctx = {
     fetchImpl: options?.fetchImpl || globalThis.fetch?.bind(globalThis),
     WebSocketImpl: options?.WebSocketImpl ?? globalThis.WebSocket ?? null,
     getSession: options?.getSession || (() => ({})),
     onSyncFrame: options?.onSyncFrame || null,
+    onAppUpdate: options?.onAppUpdate || null,
     onHelloAck: options?.onHelloAck || null,
     onStatusChange: options?.onStatusChange || null,
     baseDelayMs: options?.reconnectBaseMs ?? 500,
@@ -123,6 +144,7 @@ export function createCloudClient(options) {
   };
   return Object.freeze({
     callRpc: (method, params, opts) => executeRpc(ctx, method, params, opts),
+    fetchLatestApp: () => executeGetLatestApp(ctx),
     connectWs: () => openLinkSocket(ctx, makeRpcError, buildWsUrl),
     disconnect: () => disconnectLinkSocket(ctx, makeRpcError),
     scheduleRetry: () => {

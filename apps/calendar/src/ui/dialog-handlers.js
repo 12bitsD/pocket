@@ -11,6 +11,7 @@ import {
   showUndoToast,
   toggleSecretInput
 } from './dom-handlers.js';
+import { handlePickerClick, syncPickerDisplay } from './pickers.js';
 
 const EVENT_REMINDER_FLAGS = Object.freeze({
   alarm: '--alarm -15m',
@@ -51,7 +52,8 @@ function updateTodoFormDom(form, box, fallbackDate) {
   if (sched === '指定日期') {
     whenText = form.querySelector('#td-date')?.value || fallbackDate;
   } else if (sched === '每周') {
-    const dowIdx = Number(form.querySelector('#td-dow')?.value ?? 5);
+    const dowEl = form.querySelector('input[name="weekly_dow"]:checked');
+    const dowIdx = Number(dowEl?.value ?? 5);
     whenText = `每${DOW_LABELS[dowIdx] || '周五'}`;
   }
   box.innerHTML = `<b>$</b> todo.set --assign <b>${escapeHtml(target)}</b> ` +
@@ -84,11 +86,46 @@ export function syncEventEndOnStartEdit(form, event) {
   const endEl = form.querySelector('#ev-end');
   if (startEl?.value && endEl?.value &&
       toMinutes(endEl.value) <= toMinutes(startEl.value)) {
-    endEl.value = minutesToHhmm(toMinutes(startEl.value) + 60);
+    const nextEnd = minutesToHhmm(toMinutes(startEl.value) + 60);
+    endEl.value = nextEnd;
+    syncPickerDisplay(form, 'ev-end', nextEnd, 'time');
+  }
+}
+
+function syncDialogShortcutStates(form, todayIso) {
+  if (!form?.querySelectorAll) {
+    return;
+  }
+  const evDate = form.querySelector('#ev-date')?.value || '';
+  for (const btn of form.querySelectorAll('[data-date-offset]')) {
+    const iso = addDaysIso(todayIso, Number(btn.dataset.dateOffset));
+    btn.setAttribute('aria-pressed', String(evDate === iso));
+  }
+  const tdDate = form.querySelector('#td-date')?.value || '';
+  for (const btn of form.querySelectorAll('[data-todo-date-offset]')) {
+    const iso = addDaysIso(todayIso, Number(btn.dataset.todoDateOffset));
+    btn.setAttribute('aria-pressed', String(tdDate === iso));
+  }
+  const s = form.querySelector('#ev-start')?.value;
+  const e = form.querySelector('#ev-end')?.value;
+  const dur = s && e ? toMinutes(e) - toMinutes(s) : -1;
+  for (const btn of form.querySelectorAll('[data-dur-mins]')) {
+    const active = dur === Number(btn.dataset.durMins);
+    btn.setAttribute('aria-pressed', String(active));
   }
 }
 
 export function updateFormDialogDom(form, fallbackDate) {
+  if (form.dataset.kind === 'todo') {
+    const target = form.querySelector(
+      'input[name="target"]:checked'
+    )?.value || 'none';
+    const sched = form.querySelector(
+      'input[name="schedule"]:checked'
+    )?.value || '今天';
+    syncTodoFieldVisibility(form, target, sched);
+  }
+  syncDialogShortcutStates(form, fallbackDate);
   const box = form.querySelector('#cli-preview');
   if (!box) {
     return;
@@ -112,7 +149,9 @@ function applyDurationShortcut(ui, form, durBtn) {
   const endEl = form.querySelector('#ev-end');
   if (endEl) {
     const mins = Number(durBtn.dataset.durMins);
-    endEl.value = minutesToHhmm(toMinutes(startVal) + mins);
+    const nextEnd = minutesToHhmm(toMinutes(startVal) + mins);
+    endEl.value = nextEnd;
+    syncPickerDisplay(form, 'ev-end', nextEnd, 'time');
     updateFormDialogDom(form, ui.store.getState().todayIso);
   }
   return true;
@@ -129,14 +168,16 @@ function applyDateShortcutClick(ui, form, event) {
   if (!btn) {
     return false;
   }
-  const selector = evDateBtn ? '#ev-date' : '#td-date';
+  const targetId = evDateBtn ? 'ev-date' : 'td-date';
   const rawOff = evDateBtn
     ? btn.dataset.dateOffset
     : btn.dataset.todoDateOffset;
-  const input = form.querySelector(selector);
+  const input = form.querySelector(`#${targetId}`);
   if (input) {
     const today = ui.store.getState().todayIso;
-    input.value = addDaysIso(today, Number(rawOff));
+    const nextIso = addDaysIso(today, Number(rawOff));
+    input.value = nextIso;
+    syncPickerDisplay(form, targetId, nextIso, 'date');
     updateFormDialogDom(form, today);
   }
   return true;
@@ -204,7 +245,14 @@ export function handleDialogClick(ui, event) {
     toggleSecretInput(form, secretBtn);
     return;
   }
-  if (applyDateShortcutClick(ui, form, event) || !ui.editingId) {
+  const todayIso = ui.store.getState().todayIso;
+  const picked = handlePickerClick(form, event, todayIso, (tid) => {
+    if (tid === 'ev-start') {
+      syncEventEndOnStartEdit(form, { target: { id: 'ev-start' } });
+    }
+    updateFormDialogDom(form, todayIso);
+  });
+  if (picked || applyDateShortcutClick(ui, form, event) || !ui.editingId) {
     return;
   }
   for (const [selector, handler] of EDIT_DIALOG_ACTIONS) {
@@ -236,16 +284,21 @@ function submitTodoDialog(ui, fd, submitBtn) {
 
 function submitEventDialog(ui, fd, submitBtn) {
   const date = String(fd.get('date') || ui.store.getState().selectedDate);
-  const call = ui.store.saveEvent({
+  const draft = {
     event_id: ui.editingId,
     event_date: date,
     start_hhmm: fd.get('start'),
     end_hhmm: fd.get('end'),
     title: fd.get('title'),
-    location: fd.get('location'),
-    repeat: fd.get('repeat'),
     reminder: fd.get('reminder')
-  });
+  };
+  if (fd.has('location')) {
+    draft.location = fd.get('location');
+  }
+  if (fd.has('repeat')) {
+    draft.repeat = fd.get('repeat');
+  }
+  const call = ui.store.saveEvent(draft);
   runSafely(ui, call, '日程已保存', {
     trigger: submitBtn,
     onOk: () => {

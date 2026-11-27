@@ -230,6 +230,7 @@ def load_config(env):
             secret_key=env["POCKET_SECRET_KEY"],
             public_url=env.get("POCKET_PUBLIC_URL", "http://127.0.0.1:8787"),
             allow_http_loopback=env.get("POCKET_ALLOW_HTTP_LOOPBACK") == "true",
+            releases_dir=env.get("POCKET_RELEASES_DIR", "").strip(),
         )
     except KeyError as error:
         raise CliError(

@@ -100,19 +100,42 @@ class AlarmRingingService : Service() {
 
     private fun startAlarmForeground(notification: Notification) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
+            val started = tryStartForeground(
                 notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
-            )
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
+            ) || tryStartForeground(
                 notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
             )
-        } else {
+            if (!started) {
+                Log.e(TAG, "Unable to enter foreground on API 34+")
+            }
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            tryStartForeground(
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
+            return
+        }
+        try {
             startForeground(NOTIFICATION_ID, notification)
+        } catch (err: Exception) {
+            Log.e(TAG, "Unable to enter foreground", err)
+        }
+    }
+
+    private fun tryStartForeground(
+        notification: Notification,
+        serviceType: Int
+    ): Boolean {
+        return try {
+            startForeground(NOTIFICATION_ID, notification, serviceType)
+            true
+        } catch (err: Exception) {
+            Log.w(TAG, "startForeground failed for type=$serviceType", err)
+            false
         }
     }
 
